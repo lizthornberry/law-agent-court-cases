@@ -1,0 +1,76 @@
+# Isolated config for VERIFYING the Gemini file-based JSONL batch path.
+# Points images_root at a small symlink dir (two box folders only) so inventory
+# scans just those two folders. FLASH everywhere (validating the batch
+# MECHANISM, not Pro quality) and isolated data/output dirs.
+
+provider: gemini
+
+models:
+  gemini: gemini-2.5-flash
+  mock: mock-1
+
+stages:
+  classify:
+    model: gemini-2.5-flash
+    mode: live
+  transcribe:
+    mode: batch
+    # PRODUCTION model: validate the batch Pro path and whether batch Pro quota
+    # is separate from the (exhausted) interactive per-day Pro cap.
+    default_model: gemini-3.1-pro-preview
+    type_models: {}
+    skip_types: [blank, box_photo]
+  cases:
+    provider: gemini
+    model: gemini-2.5-flash
+
+paths:
+  images_root: "_batch_test_images"
+  data_dir: "data_batch_test"
+  output_dir: "output_batch_test"
+
+image:
+  max_dimension: 2200
+  jpeg_quality: 90
+  apply_exif_transpose: true
+
+run:
+  mode: batch
+  concurrency: 6
+  max_retries: 5
+  retry_initial_seconds: 2
+  retry_max_seconds: 60
+  skip_first_image_in_box: true
+
+segment:
+  cover_types: ["cover_regular", "cover_appeal"]
+  split_on_margin_case_number_change: true
+
+pricing:
+  models:
+    gemini-3.1-pro-preview:
+      input: 1.25
+      output: 5.00
+    gemini-2.5-flash:
+      input: 0.30
+      output: 2.50
+    mock-1:
+      input: 0.0
+      output: 0.0
+  gemini:
+    input: 0.30
+    output: 2.50
+
+estimate:
+  classify_input_tokens_per_image: 1100
+  classify_output_tokens_per_image: 150
+  transcribe_input_tokens_per_image: 1100
+  transcribe_output_tokens_per_image: 800
+  input_tokens_per_image: 1100
+  output_tokens_per_image: 700
+  consolidation_input_tokens_per_case: 4500
+  consolidation_output_tokens_per_case: 500
+  assumed_images_per_case: 7
+  assumed_skip_fraction: 0.15
+  assumed_flash_transcribe_fraction: 0.10
+  batch_price_multiplier: 0.5

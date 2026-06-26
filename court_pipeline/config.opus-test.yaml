@@ -1,0 +1,122 @@
+# Court Case Transcription Pipeline -- OPUS TWO-BOX TEST config.
+#
+# Purpose: run the EXPENSIVE steps (transcribe + per-case consolidation) on
+# Claude Opus instead of Gemini Pro (to dodge Gemini Pro's daily rate limit),
+# while keeping the cheap Gemini flash classifier for the triage pass.
+#
+# Isolated dirs (data_opus_test / output_opus_test) so the existing two-box
+# Gemini calibration cache under data/ is untouched and directly comparable.
+#
+# Paths resolve relative to this file's directory (court_pipeline/) unless absolute.
+
+# Global fallback provider (used only by stages that don't set their own).
+provider: gemini
+
+# Default model id per provider (fallback for any stage without an explicit model).
+models:
+  gemini: gemini-3.1-pro-preview
+  anthropic: claude-opus-4-8
+  openai: gpt-4o
+  mock: mock-1
+
+# Two-pass per-image processing + per-case consolidation. Each stage now selects
+# BOTH a provider and a model (new per-stage `provider` keys; absent keys fall
+# back to the global `provider` above).
+stages:
+  classify:
+    # Pass A: cheap/fast triage on Gemini flash (NOT subject to Pro's limit).
+    provider: gemini
+    model: gemini-2.5-flash
+  transcribe:
+    # Pass B default: verbatim transcription on Claude Opus.
+    default_provider: anthropic
+    default_model: claude-opus-4-8
+    # Per-page_type overrides: keep the cheaper page types on Gemini flash so
+    # Opus is reserved for the substantive pages (covers/plea/hearing/other).
+    type_providers:
+      warrant: gemini
+      bill_of_costs: gemini
+    type_models:
+      warrant: gemini-2.5-flash
+      bill_of_costs: gemini-2.5-flash
+    # Never transcribed (no API call, verbatim_text=""): blanks + box photos.
+    skip_types: [blank, box_photo]
+  cases:
+    # Per-case consolidation. full_transcript is now assembled in code (not by
+    # the model), so consolidation only extracts the short structured fields.
+    # The PRODUCTION default (config.yaml) is a cheap Gemini flash model; this
+    # Opus-test config DELIBERATELY keeps consolidation on Claude Opus so this
+    # two-box run stays an apples-to-apples Opus comparison and avoids Gemini Pro
+    # entirely. (Even on Opus the cost is now far lower because no transcript is
+    # emitted.)
+    provider: anthropic
+    model: claude-opus-4-8
+
+# API keys come from the environment / .env, never from this file:
+#   gemini    -> GOOGLE_API_KEY (or GEMINI_API_KEY)
+#   anthropic -> ANTHROPIC_API_KEY
+
+paths:
+  images_root: "../Law Agent Civil Cases"
+  data_dir: "data_opus_test"
+  output_dir: "output_opus_test"
+
+image:
+  max_dimension: 2200
+  jpeg_quality: 90
+  apply_exif_transpose: true
+
+run:
+  mode: live
+  # Low concurrency to respect Anthropic rate limits; retries/backoff below
+  # absorb transient 429s.
+  concurrency: 3
+  max_retries: 5
+  retry_initial_seconds: 2
+  retry_max_seconds: 60
+  skip_first_image_in_box: true
+
+segment:
+  cover_types: ["cover_regular", "cover_appeal"]
+  split_on_margin_case_number_change: true
+
+# Pricing in USD per 1,000,000 tokens, used ONLY by the `estimate` command.
+pricing:
+  models:
+    gemini-3.1-pro-preview:
+      input: 1.25
+      output: 5.00
+    gemini-2.5-flash:
+      input: 0.30
+      output: 2.50
+    # PLACEHOLDER Opus pricing -- CONFIRM against current Anthropic pricing.
+    # (Same as the other entries here: configurable placeholders for estimate.)
+    claude-opus-4-8:
+      input: 15.00
+      output: 75.00
+  gemini:
+    input: 1.25
+    output: 5.00
+  anthropic:
+    input: 15.00
+    output: 75.00
+  openai:
+    input: 2.50
+    output: 10.00
+  mock:
+    input: 0.0
+    output: 0.0
+
+estimate:
+  classify_input_tokens_per_image: 1100
+  classify_output_tokens_per_image: 150
+  transcribe_input_tokens_per_image: 1100
+  transcribe_output_tokens_per_image: 800
+  input_tokens_per_image: 1100
+  output_tokens_per_image: 700
+  consolidation_input_tokens_per_case: 4500
+  consolidation_output_tokens_per_case: 500
+  assumed_images_per_case: 7
+  assumed_skip_fraction: 0.15
+  assumed_flash_transcribe_fraction: 0.10
+  batch_price_multiplier: 0.5

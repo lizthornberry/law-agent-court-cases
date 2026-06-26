@@ -1,0 +1,9 @@
+# court_viewer dependencies (separate from court_pipeline/requirements.txt).
+# Pinned to the versions installed/verified in the project .venv (Python 3.9.6).
+fastapi==0.128.8
+uvicorn[standard]==0.39.0
+jinja2==3.1.6
+python-multipart==0.0.20
+# Already present in the shared venv, pinned here for completeness:
+Pillow==11.3.0
+PyYAML==6.0.3

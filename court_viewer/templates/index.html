@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Court Transcription Viewer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Court Transcription Viewer</div>
+    <form id="search-form" class="search">
+      <input id="q" type="search" placeholder="Search transcripts, fields, notes…" autocomplete="off" />
+      <select id="scope" title="Search scope">
+        <option value="">All (effective values + notes)</option>
+        <optgroup label="Restrict to field" id="scope-fields"></optgroup>
+        <option value="transcript">Page transcripts</option>
+        <option value="notes">Notes</option>
+      </select>
+      <select id="status-filter" title="Filter by review status">
+        <option value="">Any status</option>
+      </select>
+      <button type="submit">Search</button>
+      <button type="button" id="clear-search" class="ghost">Clear</button>
+    </form>
+    <div id="dirty-indicator" class="dirty hidden">● Unsaved changes</div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span id="list-title">Cases</span>
+        <span id="list-count" class="muted"></span>
+      </div>
+      <ul id="case-list" class="case-list"></ul>
+    </aside>
+
+    <section id="detail" class="detail">
+      <div class="placeholder">Select a case from the left, or run a search.</div>
+    </section>
+  </main>
+
+  <!-- Unsaved-changes guard modal -->
+  <div id="guard" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3>Unsaved changes</h3>
+      <p>You have unsaved edits to this case. What would you like to do?</p>
+      <div class="modal-actions">
+        <button id="guard-save" class="primary">Save</button>
+        <button id="guard-discard" class="danger">Discard</button>
+        <button id="guard-cancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-image lightbox -->
+  <div id="lightbox" class="modal-backdrop hidden">
+    <div class="lightbox-inner">
+      <button id="lightbox-close" class="lightbox-close" title="Close">×</button>
+      <img id="lightbox-img" alt="full image" />
+      <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

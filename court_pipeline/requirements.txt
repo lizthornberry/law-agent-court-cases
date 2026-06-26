@@ -1,0 +1,12 @@
+# Core
+pydantic>=2.6
+PyYAML>=6.0
+python-dotenv>=1.0
+tenacity>=8.2
+tqdm>=4.66
+Pillow>=10.0
+
+# Providers (only the one you configure needs to be installed/usable)
+google-genai>=0.3
+anthropic>=0.40
+openai>=1.40

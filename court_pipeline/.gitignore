@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+data/
+output/
+data_test/
+output_test/
+data_batch_test/
+output_batch_test/
+data_opus_test/
+output_opus_test/
+_batch_test_images/
+.venv/
+venv/
+*.log
+.DS_Store

@@ -1,0 +1,64 @@
+# Test config: mock provider (no API calls), isolated data/output dirs.
+provider: mock
+models:
+  mock: mock-1
+# Two-pass stage models. The mock provider ignores the model NAME (it makes no
+# API calls), so we use distinct ids here purely so the offline test can SEE
+# which model the routing logic selected per page type (recorded as
+# classify_model / transcribe_model on each PageRecord).
+stages:
+  classify:
+    model: mock-1
+  transcribe:
+    default_model: mock-pro
+    type_models:
+      warrant: mock-flash
+      bill_of_costs: mock-flash
+    skip_types: [blank, box_photo]
+  cases:
+    # Consolidation defaults to a flash model (mirrors config.yaml). The mock
+    # provider ignores the model NAME, so this id is purely so the offline test
+    # can SEE that consolidation routed to the flash model (CaseRecord.model).
+    model: mock-flash
+paths:
+  images_root: "../Law Agent Civil Cases"
+  data_dir: "data_test"
+  output_dir: "output_test"
+image:
+  max_dimension: 1200
+  jpeg_quality: 85
+  apply_exif_transpose: true
+run:
+  mode: live
+  concurrency: 4
+  max_retries: 2
+  retry_initial_seconds: 1
+  retry_max_seconds: 5
+  skip_first_image_in_box: true
+segment:
+  cover_types: ["cover_regular", "cover_appeal"]
+  split_on_margin_case_number_change: true
+pricing:
+  models:
+    mock-1: {input: 0.0, output: 0.0}
+    mock-pro: {input: 0.0, output: 0.0}
+    mock-flash: {input: 0.0, output: 0.0}
+  mock:
+    input: 0.0
+    output: 0.0
+  gemini:
+    input: 1.25
+    output: 5.00
+estimate:
+  classify_input_tokens_per_image: 1100
+  classify_output_tokens_per_image: 150
+  transcribe_input_tokens_per_image: 1100
+  transcribe_output_tokens_per_image: 800
+  input_tokens_per_image: 1100
+  output_tokens_per_image: 700
+  consolidation_input_tokens_per_case: 4500
+  consolidation_output_tokens_per_case: 500
+  assumed_images_per_case: 7
+  assumed_skip_fraction: 0.15
+  assumed_flash_transcribe_fraction: 0.10
+  batch_price_multiplier: 0.5

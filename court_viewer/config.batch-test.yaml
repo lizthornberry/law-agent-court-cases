@@ -1,0 +1,17 @@
+# court_viewer config for batch-test pipeline outputs (isolated from production).
+
+paths:
+  results_json: "../court_pipeline/output_batch_test/results.json"
+  db: "viewer_batch_test.db"
+  archive_root: "../court_pipeline/_batch_test_images"
+  thumbnails: "thumbnails_batch_test"
+  pipeline_cases_dir: "../court_pipeline/output_batch_test/cases"
+  pipeline_pages_dir: "../court_pipeline/data_batch_test/pages"
+
+thumbnail:
+  max_dimension: 400
+  jpeg_quality: 80
+
+server:
+  host: "127.0.0.1"
+  port: 8000

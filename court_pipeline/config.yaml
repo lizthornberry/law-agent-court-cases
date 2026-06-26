@@ -1,0 +1,141 @@
+# Court Case Transcription Pipeline configuration.
+# Paths are resolved relative to this file's directory (court_pipeline/) unless absolute.
+
+# Which vision-LLM provider to use: gemini | anthropic | openai | mock
+# "mock" returns canned output and makes ZERO API calls (use it to test the
+# inventory -> pages -> segment -> consolidate -> catalog plumbing offline).
+provider: gemini
+
+# Default model id per provider. Used as a fallback by the two-pass `stages`
+# config below and by the per-case consolidation pass.
+models:
+  gemini: gemini-3.1-pro-preview
+  anthropic: claude-sonnet-4-20250514
+  openai: gpt-4o
+  mock: mock-1
+
+# Two-pass per-image processing. The page pass is split into:
+#   A) classify  - cheap/fast model reads page_type + margin case no. (no transcript)
+#   B) transcribe - a model ROUTED by page_type does the verbatim transcription
+# This lets a cheap model triage every page while an expensive model only
+# transcribes the pages that actually need it (and skips blanks/box photos).
+stages:
+  classify:
+    # Runs on ALL non-first images. Keep this cheap & fast.
+    model: gemini-2.5-flash
+    # mode: live   # optional; defaults to run.mode (live below)
+  transcribe:
+    # Async batch by default (~50% cheaper; higher latency). Gemini only.
+    mode: batch
+    # Used for page types not listed in type_models below
+    # (cover_regular, cover_appeal, plea, hearing, other -> this PRO model).
+    default_model: gemini-3.1-pro-preview
+    # Per-page_type overrides (these route to the cheaper flash model).
+    type_models:
+      warrant: gemini-2.5-flash
+      bill_of_costs: gemini-2.5-flash
+    # Page types that are never transcribed: verbatim_text="" and NO API call.
+    skip_types: [blank, box_photo]
+  cases:
+    # Per-case consolidation (the `cases` stage). This stage NO LONGER asks the
+    # model to regenerate the hearing transcript -- full_transcript is assembled
+    # deterministically in code from the per-page verbatim_text. The model only
+    # extracts the SHORT structured header/outcome fields, so a cheap flash model
+    # is the sensible default. Bump this knob (e.g. gemini-3.1-pro-preview, or
+    # provider: anthropic / model: claude-sonnet-4-* / claude-opus-4-8) if you
+    # want stronger field extraction.
+    provider: gemini
+    model: gemini-2.5-flash
+
+# API keys are read from the environment / .env file, never from this file:
+#   gemini    -> GOOGLE_API_KEY (or GEMINI_API_KEY)
+#   anthropic -> ANTHROPIC_API_KEY
+#   openai    -> OPENAI_API_KEY
+
+paths:
+  images_root: "../Law Agent Civil Cases"
+  data_dir: "data"
+  output_dir: "output"
+
+image:
+  # Long edge is downscaled to at most this many pixels before sending (saves tokens/cost).
+  max_dimension: 2200
+  jpeg_quality: 90
+  # Apply EXIF orientation before sending.
+  apply_exif_transpose: true
+
+run:
+  # live  = concurrent synchronous calls (good for iterating / small batches)
+  # batch = async batch API where supported (Gemini), ~50% cost, higher latency
+  mode: live
+  concurrency: 6
+  max_retries: 5
+  retry_initial_seconds: 2
+  retry_max_seconds: 60
+  # The first image in each box is usually a photo of the archival box; skip the
+  # API call for it and mark it as box_photo automatically.
+  skip_first_image_in_box: true
+
+segment:
+  # Page types that begin a new case.
+  cover_types: ["cover_regular", "cover_appeal"]
+  # Also start a new case when the margin case number changes (even without a cover).
+  split_on_margin_case_number_change: true
+
+# Pricing in USD per 1,000,000 tokens, used ONLY by the `estimate` command.
+# Update these to match current provider pricing.
+pricing:
+  # Per-MODEL prices (preferred): the two-pass flow mixes flash + pro, so the
+  # estimator prices each stage/page-type at its own model's rate.
+  models:
+    gemini-3.1-pro-preview:
+      input: 1.25
+      output: 5.00
+    gemini-2.5-flash:
+      input: 0.30
+      output: 2.50
+    mock-1:
+      input: 0.0
+      output: 0.0
+  # Provider-level fallback (used when a model isn't found in `models` above).
+  gemini:
+    input: 1.25
+    output: 5.00
+  anthropic:
+    input: 3.00
+    output: 15.00
+  openai:
+    input: 2.50
+    output: 10.00
+  mock:
+    input: 0.0
+    output: 0.0
+
+# Token heuristics for the cost estimator (rough, refined by calibration).
+estimate:
+  # Pass A (classify): small output (just the triage JSON).
+  classify_input_tokens_per_image: 1100
+  classify_output_tokens_per_image: 150
+  # Pass B (transcribe): large output (the verbatim transcript).
+  transcribe_input_tokens_per_image: 1100
+  transcribe_output_tokens_per_image: 800
+  # Legacy single-pass keys (kept as fallbacks if the above are absent).
+  input_tokens_per_image: 1100
+  output_tokens_per_image: 700
+  # Consolidation INPUT still includes the page transcripts as context, so it
+  # stays large. OUTPUT is now SMALL: the model only emits the short structured
+  # fields (full_transcript is assembled in code, not returned by the model).
+  consolidation_input_tokens_per_case: 4500
+  consolidation_output_tokens_per_case: 500
+  # If cases.json does not exist yet, assume this many images per case.
+  assumed_images_per_case: 7
+  # Before any classification cache exists, the estimator assumes this page-type
+  # mix to split transcribe cost between skip / flash / pro models:
+  #   - assumed_skip_fraction: share of images that are blank/box_photo (skipped)
+  #   - assumed_flash_transcribe_fraction: share of the NON-skip images routed to
+  #     a type_models override (e.g. warrant/bill_of_costs -> flash)
+  # Once a classify cache exists, the estimator counts ACTUAL page types instead.
+  assumed_skip_fraction: 0.15
+  assumed_flash_transcribe_fraction: 0.10
+  # Batch mode price multiplier (e.g. 0.5 = 50% discount).
+  batch_price_multiplier: 0.5

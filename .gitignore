@@ -1,0 +1,52 @@
+# Secrets and local env
+.env
+.env.local
+*.pem
+*credentials*
+court_pipeline/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pipeline data and outputs (large / generated)
+court_pipeline/data/
+court_pipeline/output/
+court_pipeline/data_test/
+court_pipeline/output_test/
+court_pipeline/data_batch_test/
+court_pipeline/output_batch_test/
+court_pipeline/data_opus_test/
+court_pipeline/output_opus_test/
+court_pipeline/_batch_test_images/
+court_batch_*/
+
+# Local image archives (not source)
+Law Agent Civil Cases/
+
+# Other project folders in workspace (not part of this repo)
+Archive Materials to Sort/
+SNA archives - for Cursor - exemptions/
+sna-exemptions/
+
+# court_viewer generated artifacts
+court_viewer/viewer.db
+court_viewer/viewer.db-*
+court_viewer/viewer_batch_test.db
+court_viewer/viewer_batch_test.db-*
+court_viewer/thumbnails/
+court_viewer/thumbnails_batch_test/
+
+# Logs
+*.log

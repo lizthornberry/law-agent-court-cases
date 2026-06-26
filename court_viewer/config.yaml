@@ -1,0 +1,30 @@
+# court_viewer configuration.
+# Paths are resolved relative to THIS file's directory (court_viewer/) unless absolute.
+
+paths:
+  # CANONICAL, portable source of truth. Lives in the OneDrive tree so it travels
+  # between machines. Rebuilt from the pipeline via build_results.py; exported to
+  # from SQLite on every save.
+  results_json: "../court_pipeline/output/results.json"
+
+  # LOCAL working store. Rebuilt from results.json whenever results.json is newer.
+  db: "viewer.db"
+
+  # Root of the image archive: images live at {archive_root}/{box}/{filename}.
+  archive_root: "../Law Agent Civil Cases"
+
+  # On-demand Pillow thumbnail cache.
+  thumbnails: "thumbnails"
+
+  # Where build_results.py reads pipeline outputs from (READ-ONLY).
+  pipeline_cases_dir: "../court_pipeline/output/cases"
+  pipeline_pages_dir: "../court_pipeline/data/pages"
+
+thumbnail:
+  # Long-edge max for generated thumbnails.
+  max_dimension: 400
+  jpeg_quality: 80
+
+server:
+  host: "127.0.0.1"
+  port: 8000
