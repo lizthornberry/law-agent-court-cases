@@ -183,6 +183,8 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
         date_heard=obj.get("date_heard"),
         date_heard_iso=obj.get("date_heard_iso"),
         appearance_for_plaintiff=obj.get("appearance_for_plaintiff"),
+        lawyer_or_agent_for_plaintiff=obj.get("lawyer_or_agent_for_plaintiff"),
+        lawyer_or_agent_for_defendant=obj.get("lawyer_or_agent_for_defendant"),
         interpreter=obj.get("interpreter"),
         plea_verbatim=obj.get("plea_verbatim"),
         verdict=obj.get("verdict"),

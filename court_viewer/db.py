@@ -120,9 +120,9 @@ def _index_case(conn: sqlite3.Connection, case: Dict[str, Any]) -> None:
         if val:
             rows.append((case_id, SEARCH_SCOPE_TRANSCRIPT, val))
 
-    notes = case.get("notes") or ""
-    if notes.strip():
-        rows.append((case_id, SEARCH_SCOPE_NOTES, notes))
+    notes_val = effective(case.get("notes") or {})
+    if notes_val and notes_val.strip():
+        rows.append((case_id, SEARCH_SCOPE_NOTES, notes_val))
 
     if rows:
         conn.executemany("INSERT INTO fts(case_id, field, content) VALUES(?,?,?)", rows)
@@ -315,7 +315,7 @@ def update_case(conn: sqlite3.Connection, case_id: str, payload: Dict[str, Any])
       * ``fields``: {field_name: <edited str or null>}
       * ``pages``:  {filename: <edited transcript str or null>}
       * ``review_status``: one of REVIEW_STATUSES
-      * ``notes``: str
+      * ``notes``: str (stored in ``notes.edited``; ``gemini`` is never set)
     Returns the updated, normalized case (or None if not found).
     """
     case = get_case(conn, case_id)
@@ -337,7 +337,8 @@ def update_case(conn: sqlite3.Connection, case_id: str, payload: Dict[str, Any])
         case["review_status"] = payload["review_status"]
 
     if "notes" in payload:
-        case["notes"] = payload["notes"] or ""
+        value = payload["notes"]
+        case["notes"]["edited"] = value if value not in ("", None) else None
 
     _upsert_case(conn, case)
     conn.commit()
@@ -360,17 +361,29 @@ def search(
     conn: sqlite3.Connection,
     query: str,
     scope: Optional[str] = None,
+    scopes: Optional[List[str]] = None,
     status: Optional[str] = None,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
-    """Ranked FTS search. ``scope`` restricts to a single field/transcript/notes.
+    """Ranked FTS search across all cases.
 
-    Returns hits: {case_id, box, review_status, field, snippet, case_number,
-    plaintiff, defendant}.
+    ``scope`` (legacy) or ``scopes`` restricts to one or more field/transcript/notes
+    tokens. When neither is set, every indexed field is searched.
+
+    Returns hits deduplicated by case_id (best rank kept): {case_id, box,
+    review_status, field, snippet, case_number, plaintiff, defendant}.
     """
     match = _build_match_query(query)
     if not match:
         return []
+
+    active_scopes: List[str] = []
+    if scopes:
+        active_scopes = [s for s in scopes if s in SEARCH_SCOPES]
+    elif scope:
+        # Support comma-separated multi-scope in the legacy param.
+        parts = [p.strip() for p in scope.split(",") if p.strip()]
+        active_scopes = [p for p in parts if p in SEARCH_SCOPES]
 
     sql = (
         "SELECT f.case_id AS case_id, f.field AS field, "
@@ -382,20 +395,27 @@ def search(
         "WHERE fts MATCH ?"
     )
     params: List[Any] = [match]
-    if scope and scope in SEARCH_SCOPES:
-        sql += " AND f.field = ?"
-        params.append(scope)
+    if active_scopes:
+        placeholders = ", ".join("?" for _ in active_scopes)
+        sql += f" AND f.field IN ({placeholders})"
+        params.extend(active_scopes)
     if status:
         sql += " AND c.review_status = ?"
         params.append(status)
+    # Fetch extra rows so dedupe-by-case still fills ``limit`` slots.
     sql += " ORDER BY rank LIMIT ?"
-    params.append(int(limit))
+    params.append(int(limit) * 4)
 
+    seen: set[str] = set()
     out: List[Dict[str, Any]] = []
     for r in conn.execute(sql, params).fetchall():
+        case_id = r["case_id"]
+        if case_id in seen:
+            continue
+        seen.add(case_id)
         out.append(
             {
-                "case_id": r["case_id"],
+                "case_id": case_id,
                 "field": r["field"],
                 "snippet": r["snip"],
                 "box": r["box"],
@@ -405,4 +425,6 @@ def search(
                 "defendant": r["defendant"],
             }
         )
+        if len(out) >= limit:
+            break
     return out

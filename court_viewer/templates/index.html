@@ -10,13 +10,12 @@
   <header class="topbar">
     <div class="brand">Court Transcription Viewer</div>
     <form id="search-form" class="search">
-      <input id="q" type="search" placeholder="Search transcripts, fields, notes…" autocomplete="off" />
-      <select id="scope" title="Search scope">
-        <option value="">All (effective values + notes)</option>
-        <optgroup label="Restrict to field" id="scope-fields"></optgroup>
-        <option value="transcript">Page transcripts</option>
-        <option value="notes">Notes</option>
-      </select>
+      <input id="q" type="search" placeholder="Search all cases: transcripts, fields, notes…" autocomplete="off" />
+      <details class="scope-details" id="scope-details">
+        <summary title="Restrict search to specific fields">Fields</summary>
+        <div id="scope-fields-checks" class="scope-checks"></div>
+        <label class="scope-all"><input type="checkbox" id="scope-all" checked /> All fields + transcripts + notes</label>
+      </details>
       <select id="status-filter" title="Filter by review status">
         <option value="">Any status</option>
       </select>
@@ -53,17 +52,46 @@
     </div>
   </div>
 
-  <!-- Full-image lightbox -->
-  <div id="lightbox" class="modal-backdrop hidden">
-    <div class="lightbox-inner">
-      <button id="lightbox-close" class="lightbox-close" title="Close">×</button>
-      <img id="lightbox-img" alt="full image" />
-      <div id="lightbox-caption" class="lightbox-caption"></div>
+  <!-- Page review side panel (image + editable page transcript) -->
+  <div id="lightbox" class="page-review-panel hidden" aria-hidden="true">
+    <div class="page-review-head">
+      <div class="page-review-title">
+        <strong>Page review</strong>
+        <span id="lightbox-caption" class="page-review-caption"></span>
+      </div>
+      <div class="page-review-actions">
+        <div class="page-review-zoom" role="group" aria-label="Image zoom">
+          <button type="button" id="lightbox-zoom-out" class="ghost page-review-zoom-btn" title="Zoom out">−</button>
+          <span id="lightbox-zoom-label" class="page-review-zoom-label" aria-live="polite">Fit</span>
+          <button type="button" id="lightbox-zoom-in" class="ghost page-review-zoom-btn" title="Zoom in">+</button>
+          <button type="button" id="lightbox-zoom-fit" class="ghost page-review-zoom-btn" title="Fit image to panel">Fit</button>
+        </div>
+        <span id="lightbox-nav-hint" class="muted page-review-nav-hint">+ − 0 zoom · ← → page</span>
+        <button type="button" id="lightbox-close" class="ghost" title="Close (Esc)">Close ×</button>
+      </div>
     </div>
+    <div id="lightbox-img-viewport" class="page-review-image-wrap">
+      <img id="lightbox-img" alt="full image" draggable="false" />
+    </div>
+    <div class="page-review-transcript">
+      <label for="lightbox-transcript" class="page-review-transcript-label">Page transcript <span id="lightbox-edited-flag" class="edited-flag hidden">edited</span></label>
+      <textarea id="lightbox-transcript" rows="12" placeholder="No transcript for this page…"></textarea>
+      <p class="muted page-review-hint">Edits sync with the page list; use Save on the case to persist.</p>
+    </div>
+  </div>
+
+  <!-- Full transcript side panel (non-blocking) -->
+  <div id="transcript-panel" class="transcript-panel hidden" aria-hidden="true">
+    <div class="transcript-panel-head">
+      <strong>Full transcript</strong>
+      <button type="button" id="transcript-panel-close" class="ghost" title="Close panel">Close ×</button>
+    </div>
+    <textarea id="transcript-panel-body" rows="24" placeholder="No full transcript…"></textarea>
+    <p class="muted transcript-panel-hint">Panel stays open while you edit other fields. Use Save to persist.</p>
   </div>
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=7"></script>
 </body>
 </html>

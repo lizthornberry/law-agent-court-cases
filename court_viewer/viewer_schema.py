@@ -14,7 +14,7 @@ Each <case>::
     {
       "case_id", "box", "is_appeal", "page_range",
       "review_status": "unreviewed",   # one of REVIEW_STATUSES
-      "notes": "",
+      "notes": {"gemini": null, "edited": null},  # user annotations only
       "source_images": ["DSC03866.jpg", ...],
       "fields": {                      # tri-value object per field
         "<field>": {"gemini": <str|null>, "claude": <str|null>, "edited": <str|null>},
@@ -51,6 +51,8 @@ FIELD_NAMES: List[str] = [
     "date_heard",
     "date_heard_iso",
     "appearance_for_plaintiff",
+    "lawyer_or_agent_for_plaintiff",
+    "lawyer_or_agent_for_defendant",
     "interpreter",
     "plea_verbatim",
     "verdict",
@@ -89,6 +91,17 @@ def normalize_trivalue(tri: Any) -> Dict[str, Optional[str]]:
     return out
 
 
+def normalize_notes(notes: Any) -> Dict[str, Optional[str]]:
+    """User-owned reviewer notes. ``gemini`` is always null (pipeline must not fill)."""
+    if isinstance(notes, str):
+        out = empty_trivalue()
+        out["edited"] = notes if notes else None
+        return out
+    tri = normalize_trivalue(notes)
+    tri["gemini"] = None
+    return tri
+
+
 def normalize_case(case: Dict[str, Any]) -> Dict[str, Any]:
     """Return a well-formed case dict, filling defaults for missing keys."""
     fields_in = case.get("fields") or {}
@@ -117,7 +130,7 @@ def normalize_case(case: Dict[str, Any]) -> Dict[str, Any]:
         "is_appeal": bool(case.get("is_appeal", False)),
         "page_range": list(case.get("page_range") or []),
         "review_status": status,
-        "notes": case.get("notes") or "",
+        "notes": normalize_notes(case.get("notes")),
         "source_images": list(case.get("source_images") or []),
         "fields": fields_out,
         "pages": pages_out,

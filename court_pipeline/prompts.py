@@ -122,13 +122,18 @@ Return ONLY a single JSON object (no prose, no markdown fences) with EXACTLY the
 - "date_heard_iso": that date in ISO 8601 "YYYY-MM-DD" if determinable, else null.
 - "appearance_for_plaintiff": name of the person/agent/attorney who appeared for the \
 plaintiff. null if none/unknown.
+- "lawyer_or_agent_for_plaintiff": "Yes" if a lawyer or law agent appeared for the \
+plaintiff, "No" if the record clearly shows none, null if unknown or not stated.
+- "lawyer_or_agent_for_defendant": "Yes" if a lawyer or law agent appeared for the \
+defendant, "No" if the record clearly shows none, null if unknown or not stated.
 - "interpreter": name of the interpreter, if any. null otherwise.
 - "plea_verbatim": the VERBATIM text of the plea. null if none.
 - "verdict": the verdict / judgment / resolution of the case. null if unknown.
 - "language_notes": brief note on languages / translation issues, or null.
 - "field_confidence": object mapping each of these field names to "high", "medium" or \
 "low": case_number, district, magistrate, plaintiff, defendant, claim, date_heard, \
-appearance_for_plaintiff, interpreter, plea_verbatim, verdict.
+appearance_for_plaintiff, lawyer_or_agent_for_plaintiff, lawyer_or_agent_for_defendant, \
+interpreter, plea_verbatim, verdict.
 - "uncertain_fields": array listing the field names you are least confident about.
 - "is_appeal": true if this is an appeal case, else false.
 

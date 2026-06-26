@@ -14,7 +14,8 @@ from .util import now_iso, read_json, write_json
 SCALAR_COLUMNS = [
     "case_id", "box", "is_appeal",
     "case_number", "district", "magistrate", "plaintiff", "defendant", "claim",
-    "date_heard", "date_heard_iso", "appearance_for_plaintiff", "interpreter",
+    "date_heard", "date_heard_iso", "appearance_for_plaintiff",
+    "lawyer_or_agent_for_plaintiff", "lawyer_or_agent_for_defendant", "interpreter",
     "verdict", "language_notes", "provider", "model", "processed_at", "error",
     "n_pages", "page_start", "page_end", "source_json",
 ]
@@ -65,6 +66,8 @@ def build_catalog(cfg: Config) -> Dict[str, Any]:
             "date_heard": rec.date_heard,
             "date_heard_iso": rec.date_heard_iso,
             "appearance_for_plaintiff": rec.appearance_for_plaintiff,
+            "lawyer_or_agent_for_plaintiff": rec.lawyer_or_agent_for_plaintiff,
+            "lawyer_or_agent_for_defendant": rec.lawyer_or_agent_for_defendant,
             "interpreter": rec.interpreter,
             "verdict": rec.verdict,
             "language_notes": rec.language_notes,

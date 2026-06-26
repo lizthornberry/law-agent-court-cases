@@ -31,6 +31,8 @@ CASE_FIELDS = [
     "claim",
     "date_heard",
     "appearance_for_plaintiff",
+    "lawyer_or_agent_for_plaintiff",
+    "lawyer_or_agent_for_defendant",
     "interpreter",
     "plea_verbatim",
     "verdict",
@@ -104,6 +106,8 @@ class CaseRecord(BaseModel):
     date_heard: Optional[str] = None
     date_heard_iso: Optional[str] = None
     appearance_for_plaintiff: Optional[str] = None
+    lawyer_or_agent_for_plaintiff: Optional[str] = None
+    lawyer_or_agent_for_defendant: Optional[str] = None
     interpreter: Optional[str] = None
     plea_verbatim: Optional[str] = None
     verdict: Optional[str] = None

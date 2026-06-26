@@ -8,7 +8,7 @@ Idempotent + edit-preserving: when an existing ``results.json`` is present, it i
 merged by ``case_id`` so that user-supplied data survives a regeneration:
 
 * PRESERVED from the old file: ``edited`` slots (fields + page transcripts),
-  ``claude`` alternates, ``notes``, ``review_status``.
+  ``claude`` alternates, user ``notes.edited``, ``review_status``.
 * REFRESHED from the pipeline: ``gemini`` slots (fields + page transcripts),
   ``page_type``, ``order``, ``page_range``, ``source_images``, ``is_appeal``,
   ``field_confidence``, ``provenance``.
@@ -32,6 +32,7 @@ from .viewer_schema import (
     SCHEMA_VERSION,
     empty_trivalue,
     normalize_case,
+    normalize_notes,
 )
 
 
@@ -97,7 +98,7 @@ def _case_from_pipeline(case: Dict[str, Any], pages_dir: Path) -> Dict[str, Any]
             "is_appeal": bool(case.get("is_appeal", False)),
             "page_range": list(case.get("page_range") or []),
             "review_status": None,  # default applied by normalize_case
-            "notes": "",
+            "notes": empty_trivalue(),
             "source_images": list(case.get("source_images") or []),
             "fields": fields,
             "pages": _build_pages(case, pages_dir),
@@ -117,7 +118,9 @@ def _merge_case(fresh: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
 
     # User-owned, case-level.
     fresh["review_status"] = old.get("review_status", fresh["review_status"])
-    fresh["notes"] = old.get("notes", fresh["notes"])
+    old_notes = normalize_notes(old.get("notes"))
+    fresh["notes"] = empty_trivalue()
+    fresh["notes"]["edited"] = old_notes.get("edited")
 
     # Fields: keep edited + claude from old, keep refreshed gemini from fresh.
     for name in FIELD_NAMES:

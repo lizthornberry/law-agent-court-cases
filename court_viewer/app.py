@@ -7,7 +7,7 @@ Endpoints (all JSON unless noted):
   GET  /api/cases                -> list cases (filters: status, box)
   GET  /api/cases/{case_id}      -> one full case (tri-value fields + pages)
   PUT  /api/cases/{case_id}      -> save edits (sets edited slots) + export results.json
-  GET  /api/search               -> ranked FTS search (q, scope, status, limit)
+  GET  /api/search               -> ranked FTS search (q, scope/scopes, status, limit)
   POST /api/export               -> force export results.json from the DB
   POST /api/rebuild              -> force rebuild the DB from results.json
   GET  /api/image                -> full-size image bytes ({archive_root}/{box}/{filename})
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -127,15 +127,17 @@ def create_app(config: Optional[Config] = None) -> FastAPI:
     def search(
         q: str = Query(..., min_length=1),
         scope: Optional[str] = None,
+        scopes: Optional[List[str]] = Query(None),
         status: Optional[str] = None,
         limit: int = 50,
     ) -> Dict[str, Any]:
         conn = _conn()
         try:
-            hits = db.search(conn, q, scope=scope, status=status, limit=limit)
+            hits = db.search(conn, q, scope=scope, scopes=scopes, status=status, limit=limit)
         finally:
             conn.close()
-        return {"query": q, "scope": scope, "status": status, "count": len(hits), "hits": hits}
+        active = scopes or ([p.strip() for p in scope.split(",") if p.strip()] if scope else None)
+        return {"query": q, "scope": scope, "scopes": active, "status": status, "count": len(hits), "hits": hits}
 
     # ----------------------------------------------------------------
     # sync
