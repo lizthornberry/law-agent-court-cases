@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from .classify_transcribe import _as_object
 from .config import Config
+from .inventory import resolve_image_path
 from .pageio import prepare_image_bytes
 from .prompts import CONSOLIDATION_PROMPT
 from .providers import get_provider_named
@@ -109,12 +110,15 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
     full_transcript = assemble_full_transcript(cfg, case)
 
     images: List[bytes] = []
-    cover = case.get("cover_path")
-    if cover and Path(cover).exists():
-        try:
-            images.append(prepare_image_bytes(Path(cover), cfg))
-        except Exception:
-            images = []
+    cover_fn = case.get("cover_filename")
+    box = case.get("box")
+    if cover_fn and box:
+        cover = resolve_image_path(cfg, box, cover_fn, case.get("cover_path"))
+        if cover.is_file():
+            try:
+                images.append(prepare_image_bytes(cover, cfg))
+            except Exception:
+                images = []
 
     @retry(
         stop=stop_after_attempt(max_attempts),
@@ -183,6 +187,7 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
         date_heard=obj.get("date_heard"),
         date_heard_iso=obj.get("date_heard_iso"),
         appearance_for_plaintiff=obj.get("appearance_for_plaintiff"),
+        appearance_for_defendant=obj.get("appearance_for_defendant"),
         lawyer_or_agent_for_plaintiff=obj.get("lawyer_or_agent_for_plaintiff"),
         lawyer_or_agent_for_defendant=obj.get("lawyer_or_agent_for_defendant"),
         interpreter=obj.get("interpreter"),

@@ -32,7 +32,7 @@ from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wai
 from tqdm import tqdm
 
 from .config import Config
-from .inventory import iter_images, load_manifest
+from .inventory import iter_images, load_manifest, resolve_image_path
 from .pageio import prepare_image_bytes
 from .prompts import CLASSIFY_PROMPT, TRANSCRIBE_PROMPT
 from .providers import get_provider_named
@@ -104,12 +104,14 @@ def _existing_for_item(cfg: Config, box: str, item: Dict[str, Any]) -> Optional[
 def _base_record(cfg: Config, box: str, item: Dict[str, Any]) -> PageRecord:
     """Existing (sha1-matching) record to update, else a fresh one."""
     existing = _existing_for_item(cfg, box, item)
+    path = str(resolve_image_path(cfg, box, item["filename"], item.get("path")))
     if existing is not None:
+        existing.path = path
         return existing
     return PageRecord(
         box=box,
         filename=item["filename"],
-        path=item["path"],
+        path=path,
         order=item["order"],
         sha1=item["sha1"],
         provider=cfg.provider,
@@ -182,8 +184,9 @@ def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> 
 # ===========================================================================
 # Pass A: classify
 # ===========================================================================
-def _classify_request(cfg: Config, item: Dict[str, Any]) -> LLMRequest:
-    img_bytes = prepare_image_bytes(Path(item["path"]), cfg)
+def _classify_request(cfg: Config, box: str, item: Dict[str, Any]) -> LLMRequest:
+    path = resolve_image_path(cfg, box, item["filename"], item.get("path"))
+    img_bytes = prepare_image_bytes(path, cfg)
     return LLMRequest(
         prompt=CLASSIFY_PROMPT,
         images=[img_bytes],
@@ -191,7 +194,7 @@ def _classify_request(cfg: Config, item: Dict[str, Any]) -> LLMRequest:
         # tokens also count against this limit; too small a value can truncate
         # the JSON object (it then parses as a stray inner array).
         max_output_tokens=8192,
-        key=item["path"],
+        key=str(path),
         model=cfg.classify_model,
     )
 
@@ -244,7 +247,7 @@ def _classify_one_live(
     out_path = _cache_path(cfg, box, item["filename"])
     try:
         provider = get_provider_named(cfg, provider_name)
-        req = _classify_request(cfg, item)
+        req = _classify_request(cfg, box, item)
         parsed = _generate_with_retries(cfg, provider, req)
         obj = _as_object(parsed)
         if obj is None:
@@ -328,13 +331,14 @@ def _transcribe_max_output_tokens(cfg: Config) -> int:
     return int(cfg.get("run", "transcribe_max_output_tokens", default=8192))
 
 
-def _transcribe_request(cfg: Config, item: Dict[str, Any], model: str) -> LLMRequest:
-    img_bytes = prepare_image_bytes(Path(item["path"]), cfg)
+def _transcribe_request(cfg: Config, box: str, item: Dict[str, Any], model: str) -> LLMRequest:
+    path = resolve_image_path(cfg, box, item["filename"], item.get("path"))
+    img_bytes = prepare_image_bytes(path, cfg)
     return LLMRequest(
         prompt=TRANSCRIBE_PROMPT,
         images=[img_bytes],
         max_output_tokens=_transcribe_max_output_tokens(cfg),
-        key=item["path"],
+        key=str(path),
         model=model,
     )
 
@@ -376,7 +380,7 @@ def _transcribe_one_live(
     out_path = _cache_path(cfg, box, item["filename"])
     try:
         provider = get_provider_named(cfg, provider_name)
-        req = _transcribe_request(cfg, item, model)
+        req = _transcribe_request(cfg, box, item, model)
         parsed = _generate_with_retries(cfg, provider, req)
         obj = _as_object(parsed)
         if obj is None:
@@ -596,7 +600,8 @@ def _run_batch(
     print(f"[batch] preparing {len(todo)} {pass_name} requests ...", flush=True)
     index: Dict[str, tuple] = {}
     for entry in todo:
-        index[entry[1]["path"]] = entry
+        box, item = entry[0], entry[1]
+        index[str(resolve_image_path(cfg, box, item["filename"], item.get("path")))] = entry
 
     results: List[LLMResult] = []
     still_running: set[str] = set()
@@ -621,14 +626,15 @@ def _run_batch(
         requests: List[LLMRequest] = []
         n_entries = len(entries)
         for i, entry in enumerate(entries, 1):
-            item = entry[1]
-            if item["path"] in still_running:
+            box, item = entry[0], entry[1]
+            path = str(resolve_image_path(cfg, box, item["filename"], item.get("path")))
+            if path in still_running:
                 continue
             if pass_name == "classify":
-                req = _classify_request(cfg, item)
+                req = _classify_request(cfg, box, item)
             else:
-                req = _transcribe_request(cfg, item, entry[3])
-            req.key = item["path"]
+                req = _transcribe_request(cfg, box, item, entry[3])
+            req.key = path
             req.pass_name = pass_name
             requests.append(req)
             if i == 1 or i % 100 == 0 or i == n_entries:
