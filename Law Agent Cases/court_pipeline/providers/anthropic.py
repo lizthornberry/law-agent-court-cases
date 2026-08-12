@@ -56,7 +56,14 @@ class AnthropicProvider(Provider):
         text = "".join(
             block.text for block in msg.content if getattr(block, "type", "") == "text"
         )
+        model_version = getattr(msg, "model", None)
         try:
-            return LLMResult(text=text, parsed=parse_json_lenient(text), key=req.key)
+            return LLMResult(
+                text=text, parsed=parse_json_lenient(text), key=req.key,
+                model_version=model_version,
+            )
         except ValueError as exc:
-            return LLMResult(text=text, parsed=None, error=str(exc), key=req.key)
+            return LLMResult(
+                text=text, parsed=None, error=str(exc), key=req.key,
+                model_version=model_version,
+            )

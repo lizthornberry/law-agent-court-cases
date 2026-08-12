@@ -73,12 +73,13 @@ Convenience command `pages` = `classify` + `transcribe`.
 |----------|----------|------------|-------|
 | Source images | `../Law Agent Civil Cases/{box}/` | **Yes** (external archive) | Never modified by pipeline/viewer |
 | Image manifest | `data/manifest.json` | **Yes** (pipeline cache) | SHA1-keyed; incremental |
-| Per-page records | `data/pages/{box}/{filename}.json` | **Yes** | Both passes write same file; idempotent on `sha1` |
+| Per-page records | `data/pages/{box}/{filename}.json` | **Yes** | Both passes write the same file; `verbatim_text` is the baseline and `transcription_alternates.claude` holds non-destructive Opus retries |
 | Case segmentation index | `data/cases.json` | **Yes** | Grouping metadata, not LLM output |
 | Per-case extraction | `output/cases/*.json` | **Yes** (pipeline SoT for extraction) | One JSON per case |
 | Pipeline catalog | `output/catalog.db`, `index.json`, `review.csv` | Ephemeral/query | Rebuilt from case JSONs |
 | Consolidation markers | `output/cases/.done_{case_id}` | Ephemeral | Skip re-consolidation |
 | Batch job state | `data/batch_pending.json` | Ephemeral | Resume in-flight Gemini batches |
+| Forced-run snapshots | `data/force_snapshots/{timestamp}-{stage}_force/` | Recovery | Copies only existing page/case JSON affected by `--force`, before any overwrite |
 | **Viewer canonical** | `output/results.json` | **Yes** (portable, syncs via OneDrive) | Tri-value schema; survives machine moves |
 | Viewer SQLite | `~/.court-viewer/viewer.db` | Ephemeral | Outside OneDrive (WAL); rebuilt when `results.json` mtime > DB token |
 | Thumbnails | `~/.court-viewer/thumbnails/` | Ephemeral | Outside OneDrive; on-demand Pillow cache |
@@ -114,11 +115,12 @@ Law Agent Cases/
 │   ├── consolidate.py              # case-level LLM extraction + deterministic full_transcript
 │   ├── catalog.py                  # SQLite catalog + CSV review queue
 │   ├── pageio.py                   # EXIF + downscale → JPEG bytes for LLM
+│   ├── snapshots.py                # Pre-overwrite page/case JSON snapshots for --force
 │   ├── util.py                     # JSON I/O, sha1, natural sort, lenient JSON parse
 │   ├── estimate.py                 # Cost dry-run
 │   ├── batch_pending.py            # Persist/resume Gemini batch jobs
 │   ├── relocate_paths.py           # Fix stale absolute paths after project move
-│   ├── retry_opus_pages.py         # Ad-hoc reprocessing utility
+│   ├── retry_opus_pages.py         # Opus retries → Claude alternate (never overwrites baseline)
 │   ├── providers/
 │   │   ├── base.py                 # LLMRequest, LLMResult, Provider ABC
 │   │   ├── __init__.py             # get_provider_named() with memoized cache
@@ -312,7 +314,7 @@ Law Agent Cases/
 
 - Classification: `page_type`, `margin_case_number`, `detected_rotation_degrees`, `languages`
 - Transcription: `verbatim_text`
-- Provenance: `sha1`, `provider`, `classify_model`, `transcribe_model`, `classified_at`, `transcribed_at`, `transcription_status`
+- Provenance: `sha1`, `provider`, requested models, provider-reported model versions, per-stage prompt hashes, Git commit/dirty state, timestamps, `transcription_status`
 - Errors: `classify_error`, `transcribe_error`
 
 **Pipeline-filled metadata:** `box`, `filename`, `path`, `order`
@@ -354,10 +356,17 @@ Every extracted field and page transcript uses `{gemini, claude, edited}`:
 
 | Layer | Fields |
 |-------|--------|
-| Page | `sha1`, per-pass timestamps/models, `transcription_status` |
-| Case (pipeline) | `provider`, `model`, `processed_at`, `field_confidence` |
-| Case (viewer) | `provenance: {provider, model, processed_at}` |
+| Page | `sha1`; per-pass requested model + provider-reported `model_version`; SHA-256 prompt-template hash; Git commit/dirty state; timestamps; `transcription_status` |
+| Case (pipeline) | `provider`, requested `model`, response `model_version`, `prompt_hash`, `git_commit`, `git_dirty`, `processed_at`, `field_confidence` |
+| Case (viewer) | `provenance: {provider, model, model_version, prompt_hash, git_commit, git_dirty, processed_at}` |
 | Schema | `schema_version` in `results.json`; legacy page records auto-migrated in `_migrate_legacy()` |
+
+Requested model and response model are separate because preview / `latest`
+aliases can move over time. `model_version` is the identifier returned by the
+provider and is the strongest identity its API exposes; it is not necessarily a
+cryptographic identity for the underlying model weights. Prompt hashes cover the
+template, not case/page input content. Existing records are not backfilled with
+guessed provenance; fields remain empty until the corresponding stage is re-run.
 
 ---
 
@@ -552,7 +561,9 @@ at a temp directory, so the suite cannot read or write the real archive,
 | `tests/test_relocate_paths.py` | Path repair after a tree move, including the same-root case | Regression suite for a shipped bug (see below) |
 | `tests/test_consolidate_guard.py` | Which page states count as a gap; held-back cases not marked done; `--allow-incomplete` records gaps; assembly order and skip types | A failed page would otherwise vanish from `full_transcript` silently |
 | `tests/test_backup.py` | Snapshot content, rotation, disable, non-fatal failure, wiring into both write paths | The snapshot is the only undo for human edits |
+| `tests/test_force_snapshots.py` | Forced classify/transcribe/case runs copy the exact pre-overwrite JSON into timestamped directories | `--force` is intentionally destructive, so its prior machine output must remain recoverable |
 | `tests/test_config_paths.py` | Canonical vs ephemeral resolution, absolute overrides, and assertions against the **shipped** config files | Guards the file that decides where the real DB lands |
+| `tests/test_provenance.py` | Prompt hashing, Git revision/dirty state, live + batch provider model-version capture, page/case persistence, viewer propagation | Preview aliases can produce different outputs under the same requested model name |
 | `tests/test_viewer_api.py` | Edit round trip through FastAPI → SQLite → `results.json`, FTS search, staleness pickup of an externally synced file, path-traversal rejection | The seam where the three stores meet |
 
 **Worked example of why:** `relocate-paths` wrapped its whole body in

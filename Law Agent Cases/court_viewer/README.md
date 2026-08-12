@@ -70,7 +70,15 @@ Each case:
      "transcript": {"gemini": "...", "claude": null, "edited": null}}
   ],
   "field_confidence": {"plaintiff": "high", ...},
-  "provenance": {"provider": "gemini", "model": "...", "processed_at": "..."}
+  "provenance": {
+    "provider": "gemini",
+    "model": "gemini-3.1-pro-preview",       // requested model
+    "model_version": "...",                 // provider-reported response model
+    "prompt_hash": "<sha256>",
+    "git_commit": "<40-char sha>",
+    "git_dirty": false,
+    "processed_at": "..."
+  }
 }
 ```
 
@@ -80,7 +88,8 @@ Each case:
 * The **EFFECTIVE / current** value = `edited` if non-null, else `gemini`.
 * `claude` is the **ALTERNATE** (reserved for a future Gemini-vs-Claude compare
   view). It is preserved on every regenerate/save but is **never indexed for
-  search**. In v1 it is usually `null`.
+  search**. Page alternates produced by `court_pipeline.retry_opus_pages` are
+  copied into this slot; the Gemini/default baseline remains unchanged.
 * A user edit sets the `edited` slot only; `gemini` is left intact for
   provenance/compare.
 
@@ -128,9 +137,11 @@ So the flow is: `results.json` → (rebuild) → SQLite → (edit) → SQLite �
 When `results.json` already exists, the builder merges by `case_id`:
 
 * **Preserved** from the existing file: `edited` slots (fields + page
-  transcripts), `claude` alternates, `notes`, `review_status`.
+  transcripts), `claude` alternates without a fresh pipeline replacement,
+  `notes`, `review_status`.
 * **Refreshed** from the pipeline: `gemini` slots, `page_type`, `order`,
-  `page_range`, `source_images`, `is_appeal`, `field_confidence`, `provenance`.
+  `page_range`, `source_images`, `is_appeal`, `field_confidence`, `provenance`,
+  and page `claude` slots when a fresh alternate is present.
 * Cases that exist only in `results.json` (e.g. synthesized samples) are kept so
   user work is never dropped.
 

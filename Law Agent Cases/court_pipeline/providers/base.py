@@ -31,6 +31,9 @@ class LLMResult:
     parsed: Any = None
     error: Optional[str] = None
     key: Optional[str] = None
+    # Exact model/version identifier reported by the provider response. This may
+    # differ from the requested alias (especially for preview/latest models).
+    model_version: Optional[str] = None
 
 
 class Provider:

@@ -59,6 +59,56 @@ def test_missing_page_record_yields_a_null_transcript(
     assert _case(doc, "c1")["pages"][0]["transcript"]["gemini"] is None
 
 
+def test_pipeline_claude_alternate_populates_page_slot(
+    viewer_cfg, write_pipeline_case, write_page
+):
+    write_page(
+        "p1.jpg",
+        verbatim_text="Gemini baseline",
+        transcription_alternates={
+            "claude": {
+                "verbatim_text": "Claude alternate",
+                "error": None,
+                "model": "claude-opus-test",
+            }
+        },
+    )
+    write_pipeline_case("c1", source_images=["p1.jpg"])
+
+    transcript = _case(build_results(viewer_cfg), "c1")["pages"][0]["transcript"]
+
+    assert transcript == _tri(
+        gemini="Gemini baseline", claude="Claude alternate"
+    )
+
+
+def test_fresh_pipeline_claude_alternate_replaces_stale_slot(
+    viewer_cfg, write_pipeline_case, write_page
+):
+    write_page(
+        "p1.jpg",
+        transcription_alternates={
+            "claude": {"verbatim_text": "new alternate", "error": None}
+        },
+    )
+    write_pipeline_case("c1", source_images=["p1.jpg"])
+    _write_results(
+        viewer_cfg,
+        [{
+            "case_id": "c1",
+            "box": BOX,
+            "pages": [{
+                "filename": "p1.jpg",
+                "transcript": _tri(claude="stale alternate"),
+            }],
+        }],
+    )
+
+    transcript = _case(build_results(viewer_cfg), "c1")["pages"][0]["transcript"]
+
+    assert transcript["claude"] == "new alternate"
+
+
 # ---------------------------------------------------------------------------
 # preservation of human data
 # ---------------------------------------------------------------------------

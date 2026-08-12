@@ -93,6 +93,23 @@ Each `PageRecord` records both passes' state (`classified_at`/`classify_model`,
 `transcribed_at`/`transcribe_model`, `transcription_status`) so each pass is
 independently resumable, keyed on the image content hash.
 
+### Run provenance
+
+Successful LLM stages also record enough information to identify how an output
+was produced:
+
+- requested model (`classify_model`, `transcribe_model`, or case `model`);
+- provider-reported response model/version (`*_model_version` / `model_version`);
+- SHA-256 of the exact prompt **template** (`*_prompt_hash` / `prompt_hash`);
+- Git HEAD SHA and whether the pipeline source directory was modified
+  (`*_git_commit`, `*_git_dirty` / `git_commit`, `git_dirty`).
+
+The requested model and response model are deliberately separate. Preview and
+`latest` aliases can be re-pointed; the response value is the strongest model
+identity the provider exposes, though providers do not guarantee that it is a
+unique hash of model weights. Historical records are not guessed or backfilled:
+their new provenance fields remain empty until that stage is genuinely re-run.
+
 ## Setup
 
 ```bash
@@ -134,10 +151,28 @@ python -m court_pipeline.run all --new-only
 - `--limit N`: cap items processed (smoke tests).
 - `--new-only`: only newly added/changed images.
 - `--batch`: force async batch mode for **both** classify and transcribe (overrides per-stage defaults).
-- `--force`: reprocess even if cached.
+- `--force`: reprocess even if cached. Existing page/case JSON that the command
+  can replace is first copied to
+  `data/force_snapshots/<UTC timestamp>-<stage>_force/`, preserving its logical
+  `pages/` or `cases/` path. The command report includes `force_snapshot`.
 - `--allow-incomplete` (`cases`, `all`): consolidate cases whose pages are missing
   transcriptions instead of holding them back; the gaps are recorded on each
   record's `incomplete_pages`.
+
+### Claude alternates for failed pages
+`retry_opus_pages` makes a live Opus pass over pages with `transcribe_error`:
+
+```bash
+python -m court_pipeline.retry_opus_pages
+# Re-run even where a successful Claude alternate already exists:
+python -m court_pipeline.retry_opus_pages --force
+```
+
+This command does **not** repair or replace the baseline `verbatim_text`.
+It writes the response and its model/prompt/code provenance to
+`transcription_alternates.claude` in the page record. The next viewer
+`build_results` run copies that text into the page transcript's `claude` slot,
+while the original baseline and error remain available for audit.
 
 ### Batch vs live (per-stage)
 Each pass can set its own `mode` under `stages` in `config.yaml` (`live` or

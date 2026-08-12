@@ -35,9 +35,11 @@ from .config import Config
 from .inventory import iter_images, load_manifest, resolve_image_path
 from .pageio import prepare_image_bytes
 from .prompts import CLASSIFY_PROMPT, TRANSCRIBE_PROMPT
+from .provenance import stage_provenance
 from .providers import get_provider_named
 from .providers.base import LLMRequest, LLMResult, Provider
 from .schema import PAGE_TYPES, PageRecord
+from .snapshots import snapshot_json_files
 from .util import DailyQuotaExceeded, is_daily_quota_error, now_iso, read_json, write_json
 
 # Default skip types used only for legacy-cache migration (config is the source
@@ -152,7 +154,7 @@ def _as_object(parsed: Any) -> Optional[Dict[str, Any]]:
 
 
 # -- shared retry wrapper ---------------------------------------------------
-def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> Dict[str, Any]:
+def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> LLMResult:
     """Call provider.generate with retries. Raises DailyQuotaExceeded or Exception."""
     max_attempts = int(cfg.get("run", "max_retries", default=5))
     init = float(cfg.get("run", "retry_initial_seconds", default=2))
@@ -164,7 +166,7 @@ def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> 
         retry=retry_if_not_exception_type(DailyQuotaExceeded),
         reraise=True,
     )
-    def _call() -> Dict[str, Any]:
+    def _call() -> LLMResult:
         result = provider.generate(req)
         if result.error and is_daily_quota_error(result.error):
             raise DailyQuotaExceeded(result.error)
@@ -176,7 +178,7 @@ def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> 
             # (e.g. a thinking model overrunning max_output_tokens). Treat it as
             # retryable so the backoff can recover it.
             raise RuntimeError("response was not a JSON object")
-        return obj
+        return result
 
     return _call()
 
@@ -184,6 +186,16 @@ def _generate_with_retries(cfg: Config, provider: Provider, req: LLMRequest) -> 
 # ===========================================================================
 # Pass A: classify
 # ===========================================================================
+def _record_classify_provenance(
+    rec: PageRecord, model_version: Optional[str] = None,
+) -> None:
+    rec.classify_model_version = model_version or ""
+    provenance = stage_provenance(CLASSIFY_PROMPT)
+    rec.classify_prompt_hash = provenance["prompt_hash"]
+    rec.classify_git_commit = provenance["git_commit"]
+    rec.classify_git_dirty = provenance["git_dirty"]
+
+
 def _classify_request(cfg: Config, box: str, item: Dict[str, Any]) -> LLMRequest:
     path = resolve_image_path(cfg, box, item["filename"], item.get("path"))
     img_bytes = prepare_image_bytes(path, cfg)
@@ -200,7 +212,8 @@ def _classify_request(cfg: Config, box: str, item: Dict[str, Any]) -> LLMRequest
 
 
 def _apply_classify(
-    rec: PageRecord, cfg: Config, parsed: Dict[str, Any], provider_name: str
+    rec: PageRecord, cfg: Config, parsed: Dict[str, Any], provider_name: str,
+    model_version: Optional[str] = None,
 ) -> PageRecord:
     page_type = str(parsed.get("page_type") or "other")
     if page_type not in PAGE_TYPES:
@@ -214,6 +227,7 @@ def _apply_classify(
     rec.provider = provider_name
     rec.classified_at = now_iso()
     rec.classify_model = cfg.classify_model
+    _record_classify_provenance(rec, model_version)
     rec.classify_error = None
     rec.error = None
     rec.processed_at = rec.classified_at
@@ -248,8 +262,8 @@ def _classify_one_live(
     try:
         provider = get_provider_named(cfg, provider_name)
         req = _classify_request(cfg, box, item)
-        parsed = _generate_with_retries(cfg, provider, req)
-        obj = _as_object(parsed)
+        result = _generate_with_retries(cfg, provider, req)
+        obj = _as_object(result.parsed)
         if obj is None:
             raise RuntimeError("classify response was not a JSON object")
     except DailyQuotaExceeded:
@@ -260,11 +274,15 @@ def _classify_one_live(
         rec = _base_record(cfg, box, item)
         rec.classify_error = str(exc)
         rec.classify_model = cfg.classify_model
+        _record_classify_provenance(rec)
         rec.provider = provider_name
         rec.processed_at = now_iso()
         write_json(out_path, rec.model_dump())
         return str(exc)
-    rec = _apply_classify(_base_record(cfg, box, item), cfg, obj, provider_name)
+    rec = _apply_classify(
+        _base_record(cfg, box, item), cfg, obj, provider_name,
+        model_version=result.model_version,
+    )
     write_json(out_path, rec.model_dump())
     return None
 
@@ -276,7 +294,7 @@ def run_classify(
     new_only: bool = False,
     force: bool = False,
     use_batch: bool | None = None,
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     """Pass A: classify every (non-first) image. Resumable, keyed on sha1."""
     manifest = load_manifest(cfg)
     cfg.ensure_dirs()
@@ -286,6 +304,7 @@ def run_classify(
     skip_first = bool(cfg.get("run", "skip_first_image_in_box", default=True))
 
     todo: List[tuple] = []  # (box, item, provider_name)
+    box_photo_writes: List[tuple[str, Dict[str, Any]]] = []
     stats = {"total": 0, "skipped_done": 0, "box_photo": 0, "queued": 0, "errors": 0}
 
     for box, item in iter_images(manifest, boxes):
@@ -294,8 +313,7 @@ def run_classify(
             continue
         if skip_first and item.get("is_first_in_box"):
             if force or not _classify_done(cfg, box, item):
-                rec = _box_photo_classify(cfg, box, item)
-                write_json(_cache_path(cfg, box, item["filename"]), rec.model_dump())
+                box_photo_writes.append((box, item))
             stats["box_photo"] += 1
             continue
         if not force and _classify_done(cfg, box, item):
@@ -306,6 +324,22 @@ def run_classify(
             break
 
     stats["queued"] = len(todo)
+    if force:
+        affected = [
+            _cache_path(cfg, box, item["filename"])
+            for box, item in box_photo_writes
+        ]
+        affected.extend(
+            _cache_path(cfg, box, item["filename"]) for box, item, _ in todo
+        )
+        snapshot = snapshot_json_files(cfg, affected, "classify_force")
+        if snapshot is not None:
+            stats["force_snapshot"] = str(snapshot)
+
+    for box, item in box_photo_writes:
+        rec = _box_photo_classify(cfg, box, item)
+        write_json(_cache_path(cfg, box, item["filename"]), rec.model_dump())
+
     if not todo:
         return stats
 
@@ -324,6 +358,16 @@ def run_classify(
 # ===========================================================================
 # Pass B: transcribe
 # ===========================================================================
+def _record_transcribe_provenance(
+    rec: PageRecord, model_version: Optional[str] = None,
+) -> None:
+    rec.transcribe_model_version = model_version or ""
+    provenance = stage_provenance(TRANSCRIBE_PROMPT)
+    rec.transcribe_prompt_hash = provenance["prompt_hash"]
+    rec.transcribe_git_commit = provenance["git_commit"]
+    rec.transcribe_git_dirty = provenance["git_dirty"]
+
+
 def _transcribe_max_output_tokens(cfg: Config) -> int:
     env = os.environ.get("COURT_PIPELINE_TRANSCRIBE_MAX_OUTPUT_TOKENS")
     if env:
@@ -347,7 +391,8 @@ def _transcribe_request(cfg: Config, box: str, item: Dict[str, Any], model: str)
 
 
 def _apply_transcribe(
-    rec: PageRecord, parsed: Dict[str, Any], model: str, provider_name: str
+    rec: PageRecord, parsed: Dict[str, Any], model: str, provider_name: str,
+    model_version: Optional[str] = None,
 ) -> PageRecord:
     rec.verbatim_text = str(parsed.get("verbatim_text") or "")
     if parsed.get("languages"):
@@ -357,6 +402,7 @@ def _apply_transcribe(
     rec.provider = provider_name
     rec.transcribed_at = now_iso()
     rec.transcribe_model = model
+    _record_transcribe_provenance(rec, model_version)
     rec.transcribe_error = None
     rec.transcription_status = "done"
     rec.processed_at = rec.transcribed_at
@@ -384,8 +430,8 @@ def _transcribe_one_live(
     try:
         provider = get_provider_named(cfg, provider_name)
         req = _transcribe_request(cfg, box, item, model)
-        parsed = _generate_with_retries(cfg, provider, req)
-        obj = _as_object(parsed)
+        result = _generate_with_retries(cfg, provider, req)
+        obj = _as_object(result.parsed)
         if obj is None:
             raise RuntimeError("transcribe response was not a JSON object")
     except DailyQuotaExceeded:
@@ -396,11 +442,15 @@ def _transcribe_one_live(
         rec = _base_record(cfg, box, item)
         rec.transcribe_error = str(exc)
         rec.transcribe_model = model
+        _record_transcribe_provenance(rec)
         rec.provider = provider_name
         rec.processed_at = now_iso()
         write_json(out_path, rec.model_dump())
         return str(exc)
-    rec = _apply_transcribe(_base_record(cfg, box, item), obj, model, provider_name)
+    rec = _apply_transcribe(
+        _base_record(cfg, box, item), obj, model, provider_name,
+        model_version=result.model_version,
+    )
     write_json(out_path, rec.model_dump())
     return None
 
@@ -412,7 +462,7 @@ def run_transcribe(
     new_only: bool = False,
     force: bool = False,
     use_batch: bool | None = None,
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     """Pass B: transcribe each classified page via its routed model.
 
     Requires Pass A to have run; pages that aren't classified yet are reported
@@ -425,6 +475,7 @@ def run_transcribe(
     skip_types = set(cfg.transcribe_skip_types)
 
     todo: List[tuple] = []  # (box, item, provider_name, model)
+    skip_writes: List[tuple[str, Dict[str, Any]]] = []
     stats = {
         "total": 0, "skipped_done": 0, "skipped_type": 0, "not_classified": 0,
         "queued": 0, "errors": 0,
@@ -440,7 +491,7 @@ def run_transcribe(
             continue
         if rec.page_type in skip_types:
             if force or not _transcribe_done(cfg, box, item):
-                _write_skip(cfg, box, item)
+                skip_writes.append((box, item))
             stats["skipped_type"] += 1
             continue
         if not force and _transcribe_done(cfg, box, item):
@@ -453,6 +504,21 @@ def run_transcribe(
             break
 
     stats["queued"] = len(todo)
+    if force:
+        affected = [
+            _cache_path(cfg, box, item["filename"]) for box, item in skip_writes
+        ]
+        affected.extend(
+            _cache_path(cfg, box, item["filename"])
+            for box, item, _, _ in todo
+        )
+        snapshot = snapshot_json_files(cfg, affected, "transcribe_force")
+        if snapshot is not None:
+            stats["force_snapshot"] = str(snapshot)
+
+    for box, item in skip_writes:
+        _write_skip(cfg, box, item)
+
     if not todo:
         return stats
 
@@ -574,19 +640,25 @@ def _write_batch_results(
             if pass_name == "classify":
                 rec.classify_error = err
                 rec.classify_model = cfg.classify_model
+                _record_classify_provenance(rec, res.model_version)
             else:
                 rec.transcribe_error = err
                 rec.transcribe_model = entry[3]
+                _record_transcribe_provenance(rec, res.model_version)
             rec.provider = provider_name
             rec.processed_at = now_iso()
             write_json(out_path, rec.model_dump())
             stats["errors"] += 1
             continue
         if pass_name == "classify":
-            rec = _apply_classify(_base_record(cfg, box, item), cfg, obj, provider_name)
+            rec = _apply_classify(
+                _base_record(cfg, box, item), cfg, obj, provider_name,
+                model_version=res.model_version,
+            )
         else:
             rec = _apply_transcribe(
-                _base_record(cfg, box, item), obj, entry[3], provider_name
+                _base_record(cfg, box, item), obj, entry[3], provider_name,
+                model_version=res.model_version,
             )
         write_json(out_path, rec.model_dump())
 

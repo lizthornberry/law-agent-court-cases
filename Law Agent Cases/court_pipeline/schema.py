@@ -6,7 +6,7 @@ whatever the vision LLM returns before we persist it.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -66,15 +66,27 @@ class PageRecord(BaseModel):
 
     # Transcription output (Pass B).
     verbatim_text: str = ""
+    # Provider alternates are intentionally separate from the Gemini/default
+    # baseline. retry_opus_pages writes transcription_alternates["claude"] so a
+    # difficult-page retry cannot destroy verbatim_text or its provenance.
+    transcription_alternates: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     # -- Per-pass state so each pass is independently resumable (keyed on sha1).
     # Pass A (classify):
     classified_at: str = ""
     classify_model: str = ""
+    classify_model_version: str = ""
+    classify_prompt_hash: str = ""
+    classify_git_commit: str = ""
+    classify_git_dirty: Optional[bool] = None
     classify_error: Optional[str] = None
     # Pass B (transcribe):
     transcribed_at: str = ""
     transcribe_model: str = ""
+    transcribe_model_version: str = ""
+    transcribe_prompt_hash: str = ""
+    transcribe_git_commit: str = ""
+    transcribe_git_dirty: Optional[bool] = None
     transcribe_error: Optional[str] = None
     # "pending" -> not transcribed yet; "done" -> transcribed; "skipped" -> a
     # skip_types page (no API call, verbatim_text left empty).
@@ -95,6 +107,10 @@ class CaseRecord(BaseModel):
     page_range: List[int] = Field(default_factory=list)
     provider: str = ""
     model: str = ""
+    model_version: str = ""
+    prompt_hash: str = ""
+    git_commit: str = ""
+    git_dirty: Optional[bool] = None
     processed_at: str = ""
 
     # Requested fields.

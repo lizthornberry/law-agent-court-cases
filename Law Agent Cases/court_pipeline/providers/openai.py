@@ -42,7 +42,14 @@ class OpenAIProvider(Provider):
             messages=[{"role": "user", "content": content}],
         )
         text = resp.choices[0].message.content or ""
+        model_version = getattr(resp, "model", None)
         try:
-            return LLMResult(text=text, parsed=parse_json_lenient(text), key=req.key)
+            return LLMResult(
+                text=text, parsed=parse_json_lenient(text), key=req.key,
+                model_version=model_version,
+            )
         except ValueError as exc:
-            return LLMResult(text=text, parsed=None, error=str(exc), key=req.key)
+            return LLMResult(
+                text=text, parsed=None, error=str(exc), key=req.key,
+                model_version=model_version,
+            )

@@ -73,8 +73,15 @@ def _build_pages(case: Dict[str, Any], pages_dir: Path) -> List[Dict[str, Any]]:
     for idx, filename in enumerate(case.get("source_images") or []):
         rec = _load_page_record(pages_dir, box, filename) or {}
         gemini_text = rec.get("verbatim_text") or None
+        claude_alt = (rec.get("transcription_alternates") or {}).get("claude") or {}
+        claude_text = (
+            claude_alt.get("verbatim_text")
+            if not claude_alt.get("error")
+            else None
+        )
         tri = empty_trivalue()
         tri["gemini"] = gemini_text
+        tri["claude"] = claude_text or None
         pages.append(
             {
                 "filename": filename,
@@ -110,6 +117,10 @@ def _case_from_pipeline(case: Dict[str, Any], pages_dir: Path) -> Dict[str, Any]
             "provenance": {
                 "provider": case.get("provider", ""),
                 "model": case.get("model", ""),
+                "model_version": case.get("model_version", ""),
+                "prompt_hash": case.get("prompt_hash", ""),
+                "git_commit": case.get("git_commit", ""),
+                "git_dirty": case.get("git_dirty"),
                 "processed_at": case.get("processed_at", ""),
             },
         }
@@ -132,14 +143,17 @@ def _merge_case(fresh: Dict[str, Any], old: Dict[str, Any]) -> Dict[str, Any]:
         fresh["fields"][name]["edited"] = old_tri.get("edited")
         fresh["fields"][name]["claude"] = old_tri.get("claude")
 
-    # Pages: match by filename; keep edited + claude transcripts from old.
+    # Pages: match by filename. Human edits always survive. A fresh pipeline
+    # Claude alternate refreshes the machine-owned claude slot; if there is no
+    # fresh alternate, preserve the old slot for backward compatibility.
     old_pages_by_name = {p["filename"]: p for p in old.get("pages", [])}
     for page in fresh["pages"]:
         old_page = old_pages_by_name.get(page["filename"])
         if old_page:
             old_tri = old_page.get("transcript") or empty_trivalue()
             page["transcript"]["edited"] = old_tri.get("edited")
-            page["transcript"]["claude"] = old_tri.get("claude")
+            if page["transcript"].get("claude") is None:
+                page["transcript"]["claude"] = old_tri.get("claude")
 
     return fresh
 

@@ -57,7 +57,10 @@ class MockProvider(Provider):
             parsed = self._classify(req.key or "")
         else:  # TASK: TRANSCRIBE (or any legacy single-pass prompt)
             parsed = self._transcribe(req.key or "")
-        return LLMResult(text="", parsed=parsed, key=req.key)
+        return LLMResult(
+            text="", parsed=parsed, key=req.key,
+            model_version=req.model or self.model,
+        )
 
     def _classify(self, key: str) -> dict:
         return {

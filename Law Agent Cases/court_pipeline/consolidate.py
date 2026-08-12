@@ -14,9 +14,11 @@ from .config import Config
 from .inventory import resolve_image_path
 from .pageio import prepare_image_bytes
 from .prompts import CONSOLIDATION_PROMPT
+from .provenance import stage_provenance
 from .providers import get_provider_named
-from .providers.base import LLMRequest, Provider
+from .providers.base import LLMRequest, LLMResult, Provider
 from .schema import CaseRecord
+from .snapshots import case_output_paths, snapshot_json_files
 from .util import now_iso, read_json, safe_slug, write_json
 
 
@@ -175,6 +177,7 @@ def _consolidate_one(
 
     transcripts = _assemble_transcripts(cfg, case)
     prompt = CONSOLIDATION_PROMPT.format(transcripts=transcripts)
+    provenance = stage_provenance(CONSOLIDATION_PROMPT)
     # full_transcript is assembled DETERMINISTICALLY in code (never from the
     # model), so it stays byte-identical to the per-page verbatim output.
     full_transcript = assemble_full_transcript(cfg, case)
@@ -195,7 +198,7 @@ def _consolidate_one(
         wait=wait_exponential(multiplier=init, max=mx),
         reraise=True,
     )
-    def _call() -> Dict[str, Any]:
+    def _call() -> LLMResult:
         req = LLMRequest(
             # Output is now just the short structured fields (no full transcript),
             # so a modest budget is plenty.
@@ -205,10 +208,12 @@ def _consolidate_one(
         result = provider.generate(req)
         if result.error or result.parsed is None:
             raise RuntimeError(result.error or "no JSON parsed")
-        return result.parsed
+        if _as_object(result.parsed) is None:
+            raise RuntimeError("response was not a JSON object")
+        return result
 
     try:
-        parsed = _call()
+        result = _call()
     except Exception as exc:
         # Even when field extraction fails, the code-assembled verbatim
         # transcript is still valid and worth persisting.
@@ -216,19 +221,26 @@ def _consolidate_one(
             case_id=case["case_id"], box=case["box"], is_appeal=case.get("is_appeal", False),
             source_images=case["page_files"], page_range=case.get("page_range", []),
             provider=cfg.consolidate_provider, model=cfg.consolidate_model,
+            prompt_hash=provenance["prompt_hash"],
+            git_commit=provenance["git_commit"],
+            git_dirty=provenance["git_dirty"],
             processed_at=now_iso(), full_transcript=full_transcript, error=str(exc),
             incomplete_pages=incomplete,
         )
         write_json(_case_out_path(cfg, case, None), rec.model_dump())
         return str(exc)
 
-    obj = _as_object(parsed)
+    obj = _as_object(result.parsed)
     if obj is None:
         err = "response was not a JSON object"
         rec = CaseRecord(
             case_id=case["case_id"], box=case["box"], is_appeal=case.get("is_appeal", False),
             source_images=case["page_files"], page_range=case.get("page_range", []),
             provider=cfg.consolidate_provider, model=cfg.consolidate_model,
+            model_version=result.model_version or "",
+            prompt_hash=provenance["prompt_hash"],
+            git_commit=provenance["git_commit"],
+            git_dirty=provenance["git_dirty"],
             processed_at=now_iso(), full_transcript=full_transcript, error=err,
             incomplete_pages=incomplete,
         )
@@ -249,6 +261,10 @@ def _consolidate_one(
         page_range=case.get("page_range", []),
         provider=cfg.consolidate_provider,
         model=cfg.consolidate_model,
+        model_version=result.model_version or "",
+        prompt_hash=provenance["prompt_hash"],
+        git_commit=provenance["git_commit"],
+        git_dirty=provenance["git_dirty"],
         processed_at=now_iso(),
         case_number=obj.get("case_number") or case.get("provisional_case_number"),
         district=obj.get("district"),
@@ -350,6 +366,12 @@ def run_consolidate(
 
     if not todo:
         return stats
+
+    if force:
+        paths = case_output_paths(cfg, (case["case_id"] for case, _ in todo))
+        snapshot = snapshot_json_files(cfg, paths, "cases_force")
+        if snapshot is not None:
+            stats["force_snapshot"] = str(snapshot)
 
     concurrency = int(cfg.get("run", "concurrency", default=6))
     with ThreadPoolExecutor(max_workers=concurrency) as pool:

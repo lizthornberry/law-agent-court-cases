@@ -78,11 +78,20 @@ class GeminiProvider(Provider):
             config=self._config(req),
         )
         text = getattr(resp, "text", "") or ""
+        model_version = (
+            getattr(resp, "model_version", None)
+            or getattr(resp, "modelVersion", None)
+        )
         try:
             parsed = parse_json_lenient(text)
-            return LLMResult(text=text, parsed=parsed, key=req.key)
+            return LLMResult(
+                text=text, parsed=parsed, key=req.key, model_version=model_version
+            )
         except ValueError as exc:
-            return LLMResult(text=text, parsed=None, error=str(exc), key=req.key)
+            return LLMResult(
+                text=text, parsed=None, error=str(exc), key=req.key,
+                model_version=model_version,
+            )
 
     # -- batch ----------------------------------------------------------
     #
@@ -331,13 +340,18 @@ class GeminiProvider(Provider):
                     key=key,
                 )
                 continue
-            text = self._text_from_response(obj.get("response") or {})
+            response = obj.get("response") or {}
+            text = self._text_from_response(response)
+            model_version = response.get("modelVersion") or response.get("model_version")
             err = None
             try:
                 parsed = parse_json_lenient(text) if text else None
             except ValueError as exc:
                 parsed, err = None, str(exc)
-            by_key[key] = LLMResult(text=text, parsed=parsed, error=err, key=key)
+            by_key[key] = LLMResult(
+                text=text, parsed=parsed, error=err, key=key,
+                model_version=model_version,
+            )
         return by_key
 
     @staticmethod
@@ -369,15 +383,25 @@ class GeminiProvider(Provider):
         results: List[LLMResult] = []
         for req, item in zip(requests, responses):
             text, err = "", None
+            model_version = None
             try:
                 text = getattr(item.response, "text", "") or ""
+                model_version = (
+                    getattr(item.response, "model_version", None)
+                    or getattr(item.response, "modelVersion", None)
+                )
             except Exception as exc:  # pragma: no cover
                 err = str(exc)
             try:
                 parsed = parse_json_lenient(text) if text else None
             except ValueError as exc:
                 parsed, err = None, str(exc)
-            results.append(LLMResult(text=text, parsed=parsed, error=err, key=req.key))
+            results.append(
+                LLMResult(
+                    text=text, parsed=parsed, error=err, key=req.key,
+                    model_version=model_version,
+                )
+            )
         return results
 
     # -- inline batch (small jobs) -------------------------------------
