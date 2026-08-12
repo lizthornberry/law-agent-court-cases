@@ -11,10 +11,15 @@ Usage (from the directory ABOVE court_pipeline/):
     python -m court_pipeline.run segment     [--box NAME ...]
     python -m court_pipeline.run transcribe  [--box NAME ...] [--limit N] [--new-only] [--batch|--live] [--force]
     python -m court_pipeline.run pages       [--box NAME ...] [--limit N] [--new-only] [--batch] [--force]
-    python -m court_pipeline.run cases       [--box NAME ...] [--limit N] [--force]
+    python -m court_pipeline.run cases       [--box NAME ...] [--limit N] [--force] [--allow-incomplete]
     python -m court_pipeline.run catalog
     python -m court_pipeline.run relocate-paths
     python -m court_pipeline.run all         [--box NAME ...] [--limit N] [--new-only] [--batch] [--force]
+
+`cases` refuses to consolidate a case whose pages have no usable transcription,
+because such a case would produce a silently shortened full_transcript. The held
+back cases are listed in output/incomplete_cases.json; re-run `transcribe` to fill
+the gaps, or pass --allow-incomplete to proceed and record them on each record.
 
 Per-stage batch defaults (config ``stages.<pass>.mode``): transcribe defaults to
 batch; classify defaults to live. ``--batch`` forces batch; ``--live`` forces live
@@ -132,7 +137,13 @@ def cmd_segment(args, cfg):
 def cmd_cases(args, cfg):
     from .consolidate import run_consolidate
 
-    stats = run_consolidate(cfg, boxes=_boxes_arg(args), limit=args.limit, force=args.force)
+    stats = run_consolidate(
+        cfg,
+        boxes=_boxes_arg(args),
+        limit=args.limit,
+        force=args.force,
+        allow_incomplete=getattr(args, "allow_incomplete", False),
+    )
     print("Consolidation:")
     _print_json(stats)
 
@@ -181,7 +192,12 @@ def cmd_all(args, cfg):
         )
     )
     print("[5/6] cases (consolidate) ...")
-    _print_json(run_consolidate(cfg, boxes=boxes, limit=args.limit, force=args.force))
+    _print_json(
+        run_consolidate(
+            cfg, boxes=boxes, limit=args.limit, force=args.force,
+            allow_incomplete=getattr(args, "allow_incomplete", False),
+        )
+    )
     print("[6/6] catalog ...")
     _print_json(build_catalog(cfg))
 
@@ -212,6 +228,13 @@ def build_parser() -> argparse.ArgumentParser:
         if force:
             sp.add_argument("--force", action="store_true", help="reprocess even if cached")
 
+    def _add_allow_incomplete(sp):
+        sp.add_argument(
+            "--allow-incomplete", dest="allow_incomplete", action="store_true",
+            help="consolidate cases even if some pages have no transcription "
+                 "(gaps are recorded in each record's incomplete_pages)",
+        )
+
     sp = sub.add_parser("inventory", help="build/update the image manifest")
     sp.set_defaults(func=cmd_inventory)
 
@@ -238,6 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("cases", help="consolidate each case into structured JSON")
     add_common(sp, new_only=False, batch=False)
+    _add_allow_incomplete(sp)
     sp.set_defaults(func=cmd_cases)
 
     sp = sub.add_parser("catalog", help="build SQLite catalog + index.json + review.csv")
@@ -251,6 +275,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("all", help="run the full pipeline end to end")
     add_common(sp)
+    _add_allow_incomplete(sp)
     sp.set_defaults(func=cmd_all)
 
     return p

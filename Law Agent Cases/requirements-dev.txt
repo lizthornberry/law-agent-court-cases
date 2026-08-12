@@ -1,0 +1,7 @@
+# Test-only dependencies. Install on top of court_pipeline/requirements.txt and
+# court_viewer/requirements.txt:
+#     pip install -r requirements-dev.txt
+#     pytest
+pytest>=7.0
+# TestClient for the FastAPI viewer endpoints.
+httpx>=0.27

@@ -60,6 +60,17 @@ the short structured header/outcome fields (`case_number`, `district`,
 `field_confidence`, `uncertain_fields`). `field_confidence["full_transcript"]`
 is recorded as `"derived"`.
 
+**Incomplete-page guard.** Because assembly omits empty pages, a page that failed
+transcription (rate limit, auth, parse error) or was never transcribed would drop
+out of `full_transcript` silently — the case would still consolidate, still get a
+`.done_` marker, and simply come out short. So `cases` runs a pre-flight check
+(`consolidate.page_issues`) and holds back any case with a non-skip page that has
+a `transcribe_error`, a missing/unreadable page cache, a status other than
+`done`/`skipped`, or an empty `verbatim_text`. Held-back cases are listed in
+`output/incomplete_cases.json`. Fix them by re-running `transcribe`, or pass
+`--allow-incomplete` to consolidate anyway — the gaps are then recorded in each
+record's `incomplete_pages`.
+
 Because consolidation output is now small, the stage defaults to a cheap **flash**
 model (`stages.cases`). Raise it for stronger field extraction, e.g.:
 
@@ -124,6 +135,9 @@ python -m court_pipeline.run all --new-only
 - `--new-only`: only newly added/changed images.
 - `--batch`: force async batch mode for **both** classify and transcribe (overrides per-stage defaults).
 - `--force`: reprocess even if cached.
+- `--allow-incomplete` (`cases`, `all`): consolidate cases whose pages are missing
+  transcriptions instead of holding them back; the gaps are recorded on each
+  record's `incomplete_pages`.
 
 ### Batch vs live (per-stage)
 Each pass can set its own `mode` under `stages` in `config.yaml` (`live` or
@@ -139,8 +153,18 @@ is written to the documented google-genai batch API but **still needs
 verification against a real account**; a tiny flash-model job is enough to
 confirm. See the comments in `providers/gemini.py`.
 
+## Tests
+
+```bash
+cd "Law Agent Cases" && pip install -r requirements-dev.txt && pytest
+```
+
+Offline and fast. `tests/test_segment.py`, `tests/test_consolidate_guard.py` and
+`tests/test_relocate_paths.py` cover this package; see `ARCHITECTURE.md` §8 for
+what each file covers and what is still uncovered.
+
 ## Offline test (no key, no cost)
-Use the mock provider to exercise the whole flow with canned output:
+Use the mock provider to exercise the whole flow end to end with canned output:
 
 ```bash
 python -m court_pipeline.run --config court_pipeline/config.test.yaml inventory

@@ -1,5 +1,13 @@
 # court_viewer configuration.
-# Paths are resolved relative to THIS file's directory (court_viewer/) unless absolute.
+#
+# Canonical paths (results_json, archive_root, pipeline_*) resolve relative to
+# THIS file's directory (court_viewer/) unless absolute.
+#
+# Ephemeral local-state paths (db, thumbnails, backups) resolve under
+# ~/.court-viewer instead, so they never end up inside the OneDrive-synced tree.
+# SQLite runs in WAL mode and OneDrive syncs the .db independently of its -wal /
+# -shm companions, which corrupts it. Override the root with COURT_VIEWER_HOME,
+# or give an absolute path below to place a file exactly where you want it.
 
 paths:
   # CANONICAL, portable source of truth. Lives in the OneDrive tree so it travels
@@ -7,18 +15,26 @@ paths:
   # from SQLite on every save.
   results_json: "../court_pipeline/output/results.json"
 
-  # LOCAL working store. Rebuilt from results.json whenever results.json is newer.
+  # LOCAL working store -> ~/.court-viewer/viewer.db
+  # Disposable: rebuilt from results.json whenever results.json is newer.
   db: "viewer.db"
 
   # Root of the image archive: images live at {archive_root}/{box}/{filename}.
   archive_root: "../Law Agent Civil Cases"
 
-  # On-demand Pillow thumbnail cache.
+  # On-demand Pillow thumbnail cache -> ~/.court-viewer/thumbnails
   thumbnails: "thumbnails"
+
+  # results.json snapshots -> ~/.court-viewer/backups
+  backups: "backups"
 
   # Where build_results.py reads pipeline outputs from (READ-ONLY).
   pipeline_cases_dir: "../court_pipeline/output/cases"
   pipeline_pages_dir: "../court_pipeline/data/pages"
+
+backup:
+  # Snapshots of results.json kept before each merge/export. 0 disables backups.
+  keep: 20
 
 thumbnail:
   # Long-edge max for generated thumbnails.

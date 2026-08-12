@@ -119,5 +119,9 @@ class CaseRecord(BaseModel):
     language_notes: Optional[str] = None
     field_confidence: Dict[str, str] = Field(default_factory=dict)
     uncertain_fields: List[str] = Field(default_factory=list)
+    # Pages that carried no usable transcription when this case was consolidated,
+    # and are therefore MISSING from full_transcript. Empty on a clean run; only
+    # populated when consolidation was forced with --allow-incomplete.
+    incomplete_pages: List[str] = Field(default_factory=list)
 
     error: Optional[str] = None

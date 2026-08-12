@@ -6,7 +6,12 @@ SQLite is a LOCAL, disposable working store. ``results.json`` is canonical:
 * :func:`is_stale` / :func:`ensure_fresh` rebuild when results.json is newer
   than the DB's stored sync token (or the DB is missing).
 * :func:`export_results` writes results.json back out from the DB after edits
-  and re-syncs the token so the export is not mistaken for staleness.
+  and re-syncs the token so the export is not mistaken for staleness. The file it
+  is about to replace is snapshotted first (see :mod:`court_viewer.backup`).
+
+The DB lives under the local state root, never in the synced project tree: it
+runs in WAL mode, and a sync client that copies the ``.db`` without its ``-wal``
+companion produces a corrupt or silently rolled-back database.
 
 Search uses an FTS5 table over EFFECTIVE field values, EFFECTIVE page
 transcripts, and notes. ``claude`` alternates are intentionally NOT indexed.
@@ -20,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .backup import safe_backup_results
 from .config import Config
 from .viewer_schema import (
     FIELD_NAMES,
@@ -231,6 +237,7 @@ def ensure_fresh(config: Config) -> bool:
 def export_results(config: Config) -> Path:
     """Write results.json from the current DB and re-sync the staleness token."""
     results_path = config.results_json
+    safe_backup_results(config, "export")
     conn = connect(config.db_path)
     try:
         rows = conn.execute("SELECT data FROM cases").fetchall()

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
-from .classify_transcribe import _as_object
+from .classify_transcribe import _as_object, _migrate_legacy
 from .config import Config
 from .inventory import resolve_image_path
 from .pageio import prepare_image_bytes
@@ -28,15 +28,29 @@ def _load_cases_index(cfg: Config) -> Dict[str, Any]:
     return read_json(cfg.cases_index_path)
 
 
-def _page_verbatim_text(cache_file: str) -> str:
-    """Read a page's cached ``verbatim_text`` (empty string if missing/unreadable)."""
+def _read_page_cache(cache_file: str) -> Optional[Dict[str, Any]]:
+    """Load a page cache record, applying the pre-two-pass migration.
+
+    On-disk records from the original single-pass pipeline lack
+    ``classified_at`` / ``transcription_status``. Classify/transcribe already
+    migrate them on read; consolidation must do the same or it will treat a
+    fully transcribed legacy page as ``pending`` and hold the case back.
+    """
     p = Path(cache_file)
     if not p.exists():
-        return ""
+        return None
+    return _migrate_legacy(read_json(p))
+
+
+def _page_verbatim_text(cache_file: str) -> str:
+    """Read a page's cached ``verbatim_text`` (empty string if missing/unreadable)."""
     try:
-        return read_json(p).get("verbatim_text", "") or ""
+        rec = _read_page_cache(cache_file)
     except Exception:
         return ""
+    if rec is None:
+        return ""
+    return rec.get("verbatim_text", "") or ""
 
 
 def _assemble_transcripts(cfg: Config, case: Dict[str, Any]) -> str:
@@ -48,6 +62,52 @@ def _assemble_transcripts(cfg: Config, case: Dict[str, Any]) -> str:
         text = _page_verbatim_text(cache_file)
         parts.append(f"[page: {fname} | type: {ptype}]\n{text}")
     return "\n\n".join(parts)
+
+
+def page_issues(cfg: Config, case: Dict[str, Any]) -> List[str]:
+    """Report pages that would be silently dropped from ``full_transcript``.
+
+    ``assemble_full_transcript`` omits any page with empty ``verbatim_text``, so a
+    page that failed transcription (rate limit, auth, parse error) or was never
+    transcribed at all disappears from the assembled case with no trace: the case
+    still consolidates, still gets a ``.done_`` marker, and simply comes out
+    short. This pre-flight check is what makes that visible.
+
+    Skip-type pages (``blank`` / ``box_photo``) are expected to be empty and are
+    not reported. Pre-two-pass (legacy) page caches are migrated before the
+    status check so a completed single-pass record is not mistaken for pending.
+    Returns one human-readable string per problem page.
+    """
+    skip_types = set(cfg.transcribe_skip_types)
+    issues: List[str] = []
+    for cache_file, fname, ptype in zip(
+        case["page_cache_files"], case["page_files"], case["page_types"]
+    ):
+        if ptype in skip_types:
+            continue
+        p = Path(cache_file)
+        if not p.exists():
+            issues.append(f"{fname}: page cache missing ({cache_file})")
+            continue
+        try:
+            rec = _read_page_cache(cache_file)
+        except Exception as exc:
+            issues.append(f"{fname}: page cache unreadable ({exc})")
+            continue
+        if rec is None:
+            issues.append(f"{fname}: page cache missing ({cache_file})")
+            continue
+        err = rec.get("transcribe_error")
+        if err:
+            issues.append(f"{fname}: transcribe_error ({str(err)[:160]})")
+            continue
+        status = rec.get("transcription_status") or "pending"
+        if status not in ("done", "skipped"):
+            issues.append(f"{fname}: not transcribed (status={status})")
+            continue
+        if status == "done" and not (rec.get("verbatim_text") or "").strip():
+            issues.append(f"{fname}: transcribed but verbatim_text is empty")
+    return issues
 
 
 def assemble_full_transcript(cfg: Config, case: Dict[str, Any]) -> str:
@@ -65,6 +125,10 @@ def assemble_full_transcript(cfg: Config, case: Dict[str, Any]) -> str:
       * pages with empty/whitespace-only ``verbatim_text`` are omitted;
       * each remaining page is prefixed with a one-line header
         ``[<filename> | <page_type>]`` and pages are separated by a blank line.
+
+    Silent omission is only safe because :func:`page_issues` gates consolidation:
+    by the time a case reaches here, every non-skip page either has text or the
+    caller passed ``--allow-incomplete`` and the gaps are recorded on the record.
     """
     skip_types = set(cfg.transcribe_skip_types)
     parts: List[str] = []
@@ -98,7 +162,13 @@ def _mark_done(cfg: Config, case: Dict[str, Any]) -> None:
     marker.write_text(now_iso(), encoding="utf-8")
 
 
-def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> Optional[str]:
+def _consolidate_one(
+    cfg: Config,
+    provider: Provider,
+    case: Dict[str, Any],
+    issues: Optional[List[str]] = None,
+) -> Optional[str]:
+    incomplete = list(issues or [])
     max_attempts = int(cfg.get("run", "max_retries", default=5))
     init = float(cfg.get("run", "retry_initial_seconds", default=2))
     mx = float(cfg.get("run", "retry_max_seconds", default=60))
@@ -147,6 +217,7 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
             source_images=case["page_files"], page_range=case.get("page_range", []),
             provider=cfg.consolidate_provider, model=cfg.consolidate_model,
             processed_at=now_iso(), full_transcript=full_transcript, error=str(exc),
+            incomplete_pages=incomplete,
         )
         write_json(_case_out_path(cfg, case, None), rec.model_dump())
         return str(exc)
@@ -159,6 +230,7 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
             source_images=case["page_files"], page_range=case.get("page_range", []),
             provider=cfg.consolidate_provider, model=cfg.consolidate_model,
             processed_at=now_iso(), full_transcript=full_transcript, error=err,
+            incomplete_pages=incomplete,
         )
         write_json(_case_out_path(cfg, case, None), rec.model_dump())
         return err
@@ -197,10 +269,30 @@ def _consolidate_one(cfg: Config, provider: Provider, case: Dict[str, Any]) -> O
         language_notes=obj.get("language_notes"),
         field_confidence=field_confidence,
         uncertain_fields=list(obj.get("uncertain_fields") or []),
+        incomplete_pages=incomplete,
     )
     write_json(_case_out_path(cfg, case, rec.case_number), rec.model_dump())
     _mark_done(cfg, case)
     return None
+
+
+def _write_incomplete_report(cfg: Config, blocked: List[Dict[str, Any]]) -> Path:
+    path = cfg.output_dir / "incomplete_cases.json"
+    write_json(
+        path,
+        {
+            "generated_at": now_iso(),
+            "n_cases": len(blocked),
+            "hint": (
+                "These cases have pages with no usable transcription. Re-run "
+                "`transcribe` (optionally --force for the affected box) to fill "
+                "them, or re-run `cases --allow-incomplete` to consolidate anyway "
+                "and record the gaps on each case record."
+            ),
+            "cases": blocked,
+        },
+    )
+    return path
 
 
 def run_consolidate(
@@ -208,7 +300,8 @@ def run_consolidate(
     boxes: List[str] | None = None,
     limit: int | None = None,
     force: bool = False,
-) -> Dict[str, int]:
+    allow_incomplete: bool = False,
+) -> Dict[str, Any]:
     index = _load_cases_index(cfg)
     cfg.ensure_dirs()
     provider = get_provider_named(cfg, cfg.consolidate_provider)
@@ -217,22 +310,52 @@ def run_consolidate(
     if boxes:
         cases = [c for c in cases if c["box"] in boxes]
 
-    todo = []
-    stats = {"total": len(cases), "skipped_done": 0, "queued": 0, "errors": 0}
+    todo: List[tuple[Dict[str, Any], List[str]]] = []
+    blocked: List[Dict[str, Any]] = []
+    stats: Dict[str, Any] = {
+        "total": len(cases),
+        "skipped_done": 0,
+        "skipped_incomplete": 0,
+        "queued": 0,
+        "errors": 0,
+    }
     for c in cases:
         if not force and _is_done(cfg, c):
             stats["skipped_done"] += 1
             continue
-        todo.append(c)
+        # Pre-flight: a case with untranscribed pages would consolidate into a
+        # silently short transcript, so it is held back rather than marked done.
+        issues = page_issues(cfg, c)
+        if issues and not allow_incomplete:
+            stats["skipped_incomplete"] += 1
+            blocked.append({"case_id": c["case_id"], "box": c["box"], "issues": issues})
+            continue
+        todo.append((c, issues))
         if limit and len(todo) >= limit:
             break
     stats["queued"] = len(todo)
+
+    if blocked:
+        report = _write_incomplete_report(cfg, blocked)
+        stats["incomplete_report"] = str(report)
+        preview = blocked[:5]
+        tqdm.write(
+            f"WARNING: {len(blocked)} case(s) held back for missing page "
+            f"transcriptions; see {report}"
+        )
+        for item in preview:
+            tqdm.write(f"  {item['case_id']}: {item['issues'][0]}")
+        if len(blocked) > len(preview):
+            tqdm.write(f"  ... and {len(blocked) - len(preview)} more")
+
     if not todo:
         return stats
 
     concurrency = int(cfg.get("run", "concurrency", default=6))
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = {pool.submit(_consolidate_one, cfg, provider, c): c for c in todo}
+        futures = {
+            pool.submit(_consolidate_one, cfg, provider, c, issues): c for c, issues in todo
+        }
         for fut in tqdm(as_completed(futures), total=len(futures), desc="cases"):
             if fut.result():
                 stats["errors"] += 1

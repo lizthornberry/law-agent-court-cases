@@ -13,6 +13,9 @@ merged by ``case_id`` so that user-supplied data survives a regeneration:
   ``page_type``, ``order``, ``page_range``, ``source_images``, ``is_appeal``,
   ``field_confidence``, ``provenance``.
 
+The existing file is snapshotted (see :mod:`court_viewer.backup`) before it is
+replaced, so a merge that goes wrong is recoverable.
+
 Usage::
 
     python -m court_viewer.build_results [--config path] [--output path]
@@ -26,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .backup import safe_backup_results
 from .config import Config, load_config
 from .viewer_schema import (
     FIELD_NAMES,
@@ -191,6 +195,7 @@ def build_results(
     }
 
     if output_path is not None or out_path:
+        safe_backup_results(config, "build", source=out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, ensure_ascii=False, indent=2)

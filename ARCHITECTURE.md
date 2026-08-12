@@ -80,11 +80,14 @@ Convenience command `pages` = `classify` + `transcribe`.
 | Consolidation markers | `output/cases/.done_{case_id}` | Ephemeral | Skip re-consolidation |
 | Batch job state | `data/batch_pending.json` | Ephemeral | Resume in-flight Gemini batches |
 | **Viewer canonical** | `output/results.json` | **Yes** (portable, syncs via OneDrive) | Tri-value schema; survives machine moves |
-| Viewer SQLite | `viewer.db` | Ephemeral | Rebuilt when `results.json` mtime > DB token |
-| Thumbnails | `thumbnails/` | Ephemeral | On-demand Pillow cache |
+| Viewer SQLite | `~/.court-viewer/viewer.db` | Ephemeral | Outside OneDrive (WAL); rebuilt when `results.json` mtime > DB token |
+| Thumbnails | `~/.court-viewer/thumbnails/` | Ephemeral | Outside OneDrive; on-demand Pillow cache |
+| Results backups | `~/.court-viewer/backups/` | Ephemeral | Snapshot taken before each merge/export; last 20 kept |
 | User edits | `results.json` → `fields.*.edited`, `pages.*.transcript.edited` | **Yes** | Preserved across `build_results` regeneration |
 
 **Key design choice:** pipeline outputs are flat JSON on disk (gitignored, OneDrive-synced). SQLite appears twice — once as a pipeline query index (`catalog.db`), once as a viewer working store — and is always rebuildable.
+
+**Why the viewer DB is not in the project tree:** it runs in WAL mode, so the live database is a `.db` plus its `-wal` and `-shm` companions. A sync client uploads those files independently and will happily restore a `.db` without the WAL that completes it, producing corruption or a silent rollback. Everything under `~/.court-viewer/` is therefore local and rebuildable from `results.json`; set `COURT_VIEWER_HOME` to relocate it. This mirrors sna-exemptions' `~/.sna-exemptions/` and the rationale in `Newspaper Transcriptions/docs/SCALE_PLAN.md` §5.3.
 
 ---
 
@@ -146,8 +149,12 @@ Law Agent Cases/
 │   ├── sample_data.py              # Offline sample results.json generator
 │   ├── templates/index.html
 │   ├── static/app.js, style.css
-│   ├── viewer.db                   # GITIGNORED (local)
-│   └── thumbnails/                 # GITIGNORED (local)
+│   └── backup.py                   # results.json snapshots before each rewrite
+│
+├── ~/.court-viewer/                # LOCAL STATE (outside OneDrive, rebuildable)
+│   ├── viewer.db                   # + -wal / -shm companions
+│   ├── thumbnails/
+│   └── backups/                    # results-<utc>-<build|export>.json
 │
 └── ../Law Agent Civil Cases/       # SOURCE ARCHIVE (sibling dir, not in repo)
     └── {box_name}/
@@ -519,13 +526,44 @@ output_batch_test/
 .venv/
 ```
 
-Viewer DB and thumbnails are local-only (not committed). Source images live outside the repo entirely.
+Viewer DB, thumbnails and results backups live under `~/.court-viewer/`, outside the repo and outside OneDrive. Source images live outside the repo entirely.
 
 ---
 
 ## 8. Testing patterns
 
-### Law Agent Cases (manual / integration, no pytest)
+### Automated suite (pytest)
+
+```bash
+cd "Law Agent Cases"
+pip install -r requirements-dev.txt
+pytest
+```
+
+Fast (~2s), fully offline, no API calls: the pipeline runs through the `mock`
+provider. Every test works in a `tmp_path` tree with `COURT_VIEWER_HOME` pointed
+at a temp directory, so the suite cannot read or write the real archive,
+`results.json`, or `~/.court-viewer`.
+
+| File | Covers | Why it exists |
+|------|--------|---------------|
+| `tests/test_segment.py` | Case boundaries: covers, margin-number changes and normalization, box boundaries, orphan pages before the first cover, `box_photo`/`blank` handling, cache-key derivation | A bad split silently merges two cases; every downstream field inherits it |
+| `tests/test_merge.py` | Tri-value merge: `edited`/`claude`/notes/`review_status` preserved, `gemini` and structural metadata refreshed, orphan cases retained, idempotent across repeats | `results.json` is the only copy of every human correction |
+| `tests/test_relocate_paths.py` | Path repair after a tree move, including the same-root case | Regression suite for a shipped bug (see below) |
+| `tests/test_consolidate_guard.py` | Which page states count as a gap; held-back cases not marked done; `--allow-incomplete` records gaps; assembly order and skip types | A failed page would otherwise vanish from `full_transcript` silently |
+| `tests/test_backup.py` | Snapshot content, rotation, disable, non-fatal failure, wiring into both write paths | The snapshot is the only undo for human edits |
+| `tests/test_config_paths.py` | Canonical vs ephemeral resolution, absolute overrides, and assertions against the **shipped** config files | Guards the file that decides where the real DB lands |
+| `tests/test_viewer_api.py` | Edit round trip through FastAPI → SQLite → `results.json`, FTS search, staleness pickup of an externally synced file, path-traversal rejection | The seam where the three stores meet |
+
+**Worked example of why:** `relocate-paths` wrapped its whole body in
+`if old_root != new_root` and never repaired `page_cache_files`. When the tree
+moved but `images_root` did not, it reported success while all 6,771 cache paths
+stayed broken — and since `_page_verbatim_text` returns `""` for a missing file,
+consolidation would have emitted empty transcripts and marked the cases done.
+`tests/test_relocate_paths.py` fails 7 of 10 against that code and passes against
+the fix.
+
+### Manual / integration mechanisms (still useful)
 
 | Mechanism | Config / command | Purpose |
 |-----------|------------------|---------|
@@ -535,15 +573,12 @@ Viewer DB and thumbnails are local-only (not committed). Source images live outs
 | **Cost dry-run** | `python -m court_pipeline.run estimate` | No API calls |
 | **Smoke limits** | `--limit N`, `--box NAME` | Partial runs |
 
-Mock provider exercises: all page types, margin-change segmentation, flash vs pro routing, skip types, consolidation.
+### Not yet covered
 
-### sna-exemptions contrast (has pytest)
-
-```
-tests/test_batch.py, test_group.py, test_merge.py, test_date_parse.py, test_list_page.py
-```
-
-Law Agent Cases has no `tests/` directory yet — the mock-provider + isolated config pattern is the intended offline test harness.
+Provider adapters and the Gemini batch submit/poll path (`providers/`,
+`batch_pending.py`), `catalog.py`, `estimate.py`, and the classify/transcribe
+retry and escalation logic. sna-exemptions has batch coverage in
+`tests/test_batch.py` if that becomes worth mirroring.
 
 ---
 
@@ -646,7 +681,7 @@ Both projects implement the same **core architectural pattern**:
 | **Page cache location** | `data/pages/{box}/` | `data/pilot/{folder}/` per bundle |
 | **Canonical output layout** | Single merged `results.json` | One `results.json` per bundle folder |
 | **Dual-provider compare** | Schema-ready (`claude` slot); not populated | Gemini + Claude runs built in |
-| **Viewer DB location** | Beside config (`viewer.db`) | Outside OneDrive (`~/.sna-exemptions/`) |
+| **Viewer DB location** | Outside OneDrive (`~/.court-viewer/`) | Outside OneDrive (`~/.sna-exemptions/`) |
 | **Automated tests** | Mock provider integration only | pytest suite in `tests/` |
 | **Pipeline entry** | `python -m court_pipeline.run all` | `python pilot.py` / batch shell scripts |
 | **Long text assembly** | Deterministic `assemble_full_transcript()` | `admin_full_text` computed in `results.py` |

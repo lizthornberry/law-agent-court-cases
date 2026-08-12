@@ -1,7 +1,19 @@
 """Configuration loader for court_viewer.
 
-Reads ``court_viewer/config.yaml`` and resolves all paths relative to the config
-file's directory (so the viewer is portable across machines/checkouts).
+Reads ``court_viewer/config.yaml``. Paths resolve against one of two roots:
+
+* CANONICAL, portable data (``results.json``, the image archive, pipeline inputs)
+  resolves relative to the config file's directory, so it travels with the
+  project tree and syncs via OneDrive.
+* EPHEMERAL local state (the SQLite DB, thumbnails, results backups) resolves
+  under :func:`local_root` -- ``~/.court-viewer`` by default -- so it stays OUT
+  of the synced tree. This is not a preference: SQLite runs in WAL mode, and a
+  sync client that uploads ``viewer.db`` independently of its ``-wal`` and
+  ``-shm`` companions will corrupt the database or resurrect a half-written one.
+  Everything under the local root is rebuildable from ``results.json``.
+
+Set ``COURT_VIEWER_HOME`` to relocate the local root (useful for tests). An
+absolute path in config.yaml always wins over both roots.
 """
 
 from __future__ import annotations
@@ -13,6 +25,16 @@ from typing import Any, Dict
 import yaml
 
 PKG_DIR = Path(__file__).resolve().parent
+
+LOCAL_ROOT_ENV = "COURT_VIEWER_HOME"
+
+
+def local_root() -> Path:
+    """Root for ephemeral local state, kept outside any synced folder."""
+    override = os.environ.get(LOCAL_ROOT_ENV)
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path.home() / ".court-viewer"
 
 
 class Config:
@@ -32,10 +54,22 @@ class Config:
         return node
 
     def resolve(self, rel: str) -> Path:
+        """Resolve a canonical/portable path against the project tree."""
         p = Path(rel).expanduser()
         if not p.is_absolute():
             p = (self.base_dir / p).resolve()
         return p
+
+    def resolve_local(self, rel: str) -> Path:
+        """Resolve an ephemeral local-state path against :func:`local_root`.
+
+        Relative values never land inside the project tree; see the module
+        docstring for why syncing a live SQLite file is unsafe.
+        """
+        p = Path(rel).expanduser()
+        if p.is_absolute():
+            return p
+        return (local_root() / p).resolve()
 
     # -- resolved paths -------------------------------------------------
     @property
@@ -44,7 +78,7 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.resolve(self.get("paths", "db", default="viewer.db"))
+        return self.resolve_local(self.get("paths", "db", default="viewer.db"))
 
     @property
     def archive_root(self) -> Path:
@@ -52,7 +86,11 @@ class Config:
 
     @property
     def thumbnails_dir(self) -> Path:
-        return self.resolve(self.get("paths", "thumbnails", default="thumbnails"))
+        return self.resolve_local(self.get("paths", "thumbnails", default="thumbnails"))
+
+    @property
+    def backups_dir(self) -> Path:
+        return self.resolve_local(self.get("paths", "backups", default="backups"))
 
     @property
     def pipeline_cases_dir(self) -> Path:
@@ -61,6 +99,12 @@ class Config:
     @property
     def pipeline_pages_dir(self) -> Path:
         return self.resolve(self.get("paths", "pipeline_pages_dir", default="../court_pipeline/data/pages"))
+
+    # -- backups --------------------------------------------------------
+    @property
+    def backup_keep(self) -> int:
+        """How many results.json snapshots to retain (0 disables backups)."""
+        return int(self.get("backup", "keep", default=20))
 
     # -- thumbnail settings --------------------------------------------
     @property

@@ -84,7 +84,14 @@ Each case:
 * A user edit sets the `edited` slot only; `gemini` is left intact for
   provenance/compare.
 
-### SQLite (`viewer.db`) — local, disposable working store
+### SQLite (`~/.court-viewer/viewer.db`) — local, disposable working store
+
+The DB, the thumbnail cache and the `results.json` backups all live under
+`~/.court-viewer/` (override with `COURT_VIEWER_HOME`), deliberately **outside**
+the OneDrive tree: SQLite runs in WAL mode, and a sync client that copies the
+`.db` without its matching `-wal` corrupts it. All of it is rebuildable from
+`results.json`, which is the only file that needs to sync.
+
 
 SQLite is a fast local mirror, **rebuilt from `results.json`** whenever
 `results.json` is newer (or the DB is missing). Staleness is decided by
@@ -107,7 +114,8 @@ So the flow is: `results.json` → (rebuild) → SQLite → (edit) → SQLite �
 
 | File | Purpose |
 |------|---------|
-| `config.yaml` / `config.py` | Paths (results_json, db, archive_root, thumbnails, pipeline dirs) + thumbnail + server settings. Paths resolve relative to `config.yaml`. |
+| `config.yaml` / `config.py` | Paths + thumbnail + server settings. Canonical paths (results_json, archive_root, pipeline dirs) resolve relative to `config.yaml`; local state (db, thumbnails, backups) resolves under `~/.court-viewer`. |
+| `backup.py` | Snapshots `results.json` before `build_results` or an export overwrites it; keeps the last `backup.keep` (default 20). |
 | `viewer_schema.py` | `results.json` schema constants + helpers (`FIELD_NAMES`, `REVIEW_STATUSES`, tri-value, `effective()`, `normalize_case()`). |
 | `build_results.py` | Builds/refreshes `results.json` from `output/cases/*.json` + `data/pages/<box>/<file>.json`. Idempotent and **edit-preserving** (see below). |
 | `db.py` | SQLite + FTS5: rebuild from results.json, staleness check, export, search, reads/writes. |
@@ -181,6 +189,20 @@ the resolved path is still inside `archive_root` (`Path.resolve()` +
 thumbnail endpoint additionally confirms the cache target stays within the
 thumbnails dir, applies EXIF transpose, downscales with Pillow, and caches a
 JPEG (re-generated if the source is newer).
+
+---
+
+## Tests
+
+```bash
+cd "Law Agent Cases" && pip install -r requirements-dev.txt && pytest
+```
+
+`tests/test_merge.py` (edit preservation), `tests/test_backup.py`,
+`tests/test_config_paths.py` and `tests/test_viewer_api.py` cover this package.
+The suite runs against temp directories with `COURT_VIEWER_HOME` redirected, so
+it never touches the real `results.json` or `~/.court-viewer`. See
+`ARCHITECTURE.md` §8 for the full breakdown.
 
 ---
 

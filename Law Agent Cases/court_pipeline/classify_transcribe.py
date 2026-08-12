@@ -333,7 +333,10 @@ def _transcribe_max_output_tokens(cfg: Config) -> int:
 
 def _transcribe_request(cfg: Config, box: str, item: Dict[str, Any], model: str) -> LLMRequest:
     path = resolve_image_path(cfg, box, item["filename"], item.get("path"))
-    img_bytes = prepare_image_bytes(path, cfg)
+    # Apply Pass A's detected rotation so the model sees the page upright.
+    existing = _existing_for_item(cfg, box, item)
+    rotate = int(existing.detected_rotation_degrees) if existing is not None else 0
+    img_bytes = prepare_image_bytes(path, cfg, rotate_degrees=rotate)
     return LLMRequest(
         prompt=TRANSCRIBE_PROMPT,
         images=[img_bytes],

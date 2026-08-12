@@ -41,13 +41,14 @@ Archive Materials to Sort/
 SNA archives - for Cursor - exemptions/
 sna-exemptions/
 
-# court_viewer generated artifacts
-Law Agent Cases/court_viewer/viewer.db
-Law Agent Cases/court_viewer/viewer.db-*
-Law Agent Cases/court_viewer/viewer_batch_test.db
-Law Agent Cases/court_viewer/viewer_batch_test.db-*
+# court_viewer generated artifacts.
+# These now live in ~/.court-viewer/ (outside the OneDrive tree); the patterns
+# remain so pre-existing copies and any absolute-path override stay untracked.
+Law Agent Cases/court_viewer/*.db
+Law Agent Cases/court_viewer/*.db-*
 Law Agent Cases/court_viewer/thumbnails/
-Law Agent Cases/court_viewer/thumbnails_batch_test/
+Law Agent Cases/court_viewer/thumbnails_*/
+Law Agent Cases/court_viewer/backups/
 
 # Logs
 *.log
