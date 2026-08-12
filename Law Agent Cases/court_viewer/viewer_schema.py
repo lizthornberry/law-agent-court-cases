@@ -51,6 +51,7 @@ FIELD_NAMES: List[str] = [
     "date_heard",
     "date_heard_iso",
     "appearance_for_plaintiff",
+    "appearance_for_defendant",
     "lawyer_or_agent_for_plaintiff",
     "lawyer_or_agent_for_defendant",
     "interpreter",

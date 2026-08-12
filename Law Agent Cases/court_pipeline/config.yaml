@@ -45,7 +45,7 @@ stages:
     # provider: anthropic / model: claude-sonnet-4-* / claude-opus-4-8) if you
     # want stronger field extraction.
     provider: gemini
-    model: gemini-2.5-flash
+    model: gemini-3.5-flash
 
 # API keys are read from the environment / .env file, never from this file:
 #   gemini    -> GOOGLE_API_KEY (or GEMINI_API_KEY)

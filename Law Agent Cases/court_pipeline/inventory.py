@@ -23,6 +23,39 @@ def _list_images(box_dir: Path) -> List[Path]:
     )
 
 
+def resolve_image_path(
+    cfg: Config, box: str, filename: str, stored: str | None = None
+) -> Path:
+    """Return the on-disk image path for a manifest/page record.
+
+    Prefer ``{images_root}/{box}/{filename}`` so the pipeline keeps working
+    after the project tree is moved, even when cached JSON still holds stale
+    absolute paths from an older location.
+    """
+    canonical = (cfg.images_root / box / filename).resolve()
+    if canonical.is_file():
+        return canonical
+    if stored:
+        legacy = Path(stored).expanduser()
+        if legacy.is_file():
+            return legacy.resolve()
+    return canonical
+
+
+def rewrite_path_under_root(path_str: str, old_root: Path, new_root: Path) -> str:
+    """Map a stored absolute path from ``old_root`` to ``new_root``."""
+    p = Path(path_str).expanduser()
+    try:
+        rel = p.resolve().relative_to(old_root.resolve())
+    except ValueError:
+        old_s = str(old_root.resolve())
+        s = str(p)
+        if not s.startswith(old_s):
+            return path_str
+        rel = Path(s[len(old_s) :].lstrip("/\\"))
+    return str((new_root / rel).resolve())
+
+
 def build_manifest(cfg: Config) -> Dict[str, Any]:
     """Walk the image tree and (incrementally) build the manifest.
 

@@ -1,0 +1,481 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-26T16:46:25.340817+00:00",
+  "archive_root": "/Users/liz/Library/CloudStorage/OneDrive-JohnsHopkins/Cursor Projects/Law Agent Cases/Law Agent Civil Cases",
+  "cases": [
+    {
+      "case_id": "1-NKE 2-1-1-11__sample_001",
+      "box": "1-NKE 2-1-1-11",
+      "is_appeal": false,
+      "page_range": [
+        28,
+        30
+      ],
+      "review_status": "verified",
+      "notes": "Defamation case; isiXhosa quote in the summons.",
+      "source_images": [
+        "IMG_6402.jpg",
+        "IMG_6403.jpg",
+        "IMG_6404.jpg"
+      ],
+      "fields": {
+        "case_number": {
+          "gemini": "25/91",
+          "claude": null,
+          "edited": null
+        },
+        "district": {
+          "gemini": "Nqamakwe",
+          "claude": null,
+          "edited": null
+        },
+        "magistrate": {
+          "gemini": "John T. O'Connor",
+          "claude": null,
+          "edited": null
+        },
+        "plaintiff": {
+          "gemini": "Mhlini",
+          "claude": null,
+          "edited": null
+        },
+        "defendant": {
+          "gemini": "Bali",
+          "claude": null,
+          "edited": null
+        },
+        "claim": {
+          "gemini": "£9.0.0 for damages for defamation of character",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard": {
+          "gemini": "18th August 1891",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard_iso": {
+          "gemini": "1891-08-18",
+          "claude": null,
+          "edited": null
+        },
+        "appearance_for_plaintiff": {
+          "gemini": "In person",
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_plaintiff": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_defendant": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "interpreter": {
+          "gemini": "A. M. [illegible: Fainse?]",
+          "claude": null,
+          "edited": null
+        },
+        "plea_verbatim": {
+          "gemini": "Not liable.",
+          "claude": null,
+          "edited": null
+        },
+        "verdict": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "full_transcript": {
+          "gemini": "Civil Case No 25/91\nIn the Court of the Resident Magistrate for the District of Nqamakwe held at Nqamakwe this 18th August 1891 Before John T. O'Connor Esq. Mhlini versus Bali. Claim for £9.0.0. Plea: Not liable.",
+          "claude": null,
+          "edited": null
+        }
+      },
+      "pages": [
+        {
+          "filename": "IMG_6402.jpg",
+          "order": 28,
+          "page_type": "cover_regular",
+          "transcript": {
+            "gemini": "Civil Case No 25/91 — cover page. Mhlini versus Bali.",
+            "claude": null,
+            "edited": null
+          }
+        },
+        {
+          "filename": "IMG_6403.jpg",
+          "order": 29,
+          "page_type": "hearing",
+          "transcript": {
+            "gemini": "Mhlini duly cautioned states: I am plaintiff in this case.",
+            "claude": null,
+            "edited": null
+          }
+        },
+        {
+          "filename": "IMG_6404.jpg",
+          "order": 30,
+          "page_type": "other",
+          "transcript": {
+            "gemini": "Summons served on Bali by J. Curnick, Messenger of the Court.",
+            "claude": null,
+            "edited": null
+          }
+        }
+      ],
+      "field_confidence": {
+        "interpreter": "medium",
+        "plaintiff": "high"
+      },
+      "provenance": {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "processed_at": "2026-06-24T17:08:32-04:00"
+      }
+    },
+    {
+      "case_id": "1-NKE 2-1-1-11__sample_002",
+      "box": "1-NKE 2-1-1-11",
+      "is_appeal": false,
+      "page_range": [
+        1,
+        2
+      ],
+      "review_status": "in progress",
+      "notes": "Plaintiff name corrected by reviewer.",
+      "source_images": [
+        "IMG_6375.jpg",
+        "IMG_6376.jpg"
+      ],
+      "fields": {
+        "case_number": {
+          "gemini": "71/91",
+          "claude": null,
+          "edited": null
+        },
+        "district": {
+          "gemini": "Nqamakwe",
+          "claude": null,
+          "edited": null
+        },
+        "magistrate": {
+          "gemini": "John T. O'Connor",
+          "claude": null,
+          "edited": null
+        },
+        "plaintiff": {
+          "gemini": "Silonda",
+          "claude": "Silander",
+          "edited": "Silanda"
+        },
+        "defendant": {
+          "gemini": "Mtshwana",
+          "claude": null,
+          "edited": null
+        },
+        "claim": {
+          "gemini": "£9 - or Value to that amount as per summons",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard": {
+          "gemini": "5th December 1890",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard_iso": {
+          "gemini": "1890-12-05",
+          "claude": null,
+          "edited": null
+        },
+        "appearance_for_plaintiff": {
+          "gemini": "Mr Kelly",
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_plaintiff": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_defendant": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "interpreter": {
+          "gemini": "J M Njamela",
+          "claude": null,
+          "edited": null
+        },
+        "plea_verbatim": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "verdict": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "full_transcript": {
+          "gemini": "Civil Case No 71/91. Silonda (Married) Plaintiff versus Mtshwana (Married) Defendant. Claim for £9.",
+          "claude": "Civil Case No 71/91. Silander, Married, Plaintiff vs Mtshwana, Married, Defendant. Claim for nine pounds.",
+          "edited": null
+        }
+      },
+      "pages": [
+        {
+          "filename": "IMG_6375.jpg",
+          "order": 1,
+          "page_type": "cover_regular",
+          "transcript": {
+            "gemini": "Civil Case No 71/91 [Stamp: RESIDENT MAGISTRATE 5 DEC. 90 NQAMAKWE]. Before John T. O'Connor Esqr. Silonda versus Mtshwana.",
+            "claude": "Civil Case No 71/91. Before John T O'Connor. Silander vs Mtshwana.",
+            "edited": null
+          }
+        },
+        {
+          "filename": "IMG_6376.jpg",
+          "order": 2,
+          "page_type": "hearing",
+          "transcript": {
+            "gemini": "Mr Kelly asks that the summons be amended to insert the defendant's father's name, Sogabu, as the defendant is a minor.",
+            "claude": null,
+            "edited": null
+          }
+        }
+      ],
+      "field_confidence": {
+        "plaintiff": "low"
+      },
+      "provenance": {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "processed_at": "2026-06-24T17:08:32-04:00"
+      }
+    },
+    {
+      "case_id": "1-NKE 2-1-1-11__sample_003",
+      "box": "1-NKE 2-1-1-11",
+      "is_appeal": false,
+      "page_range": [
+        3,
+        3
+      ],
+      "review_status": "flagged",
+      "notes": "Page 1 partially illegible — needs a second look.",
+      "source_images": [
+        "IMG_6377.jpg"
+      ],
+      "fields": {
+        "case_number": {
+          "gemini": "109/91",
+          "claude": null,
+          "edited": null
+        },
+        "district": {
+          "gemini": "Nqamakwe",
+          "claude": null,
+          "edited": null
+        },
+        "magistrate": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "plaintiff": {
+          "gemini": "Nomtshato",
+          "claude": null,
+          "edited": null
+        },
+        "defendant": {
+          "gemini": "Mgudlwa",
+          "claude": null,
+          "edited": null
+        },
+        "claim": {
+          "gemini": "Restitution of cattle",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "date_heard_iso": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "appearance_for_plaintiff": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_plaintiff": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_defendant": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "interpreter": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "plea_verbatim": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "verdict": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "full_transcript": {
+          "gemini": "Claim for restitution of cattle. Defendant absent.",
+          "claude": null,
+          "edited": null
+        }
+      },
+      "pages": [
+        {
+          "filename": "IMG_6377.jpg",
+          "order": 3,
+          "page_type": "cover_regular",
+          "transcript": {
+            "gemini": "Civil Case No 109/91. Nomtshato versus Mgudlwa. Claim for restitution of cattle.",
+            "claude": null,
+            "edited": null
+          }
+        }
+      ],
+      "field_confidence": {},
+      "provenance": {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "processed_at": "2026-06-24T17:08:32-04:00"
+      }
+    },
+    {
+      "case_id": "1-NKE 2-1-1-11__sample_004",
+      "box": "1-NKE 2-1-1-11",
+      "is_appeal": false,
+      "page_range": [
+        4,
+        4
+      ],
+      "review_status": "unreviewed",
+      "notes": "",
+      "source_images": [
+        "IMG_6378.jpg"
+      ],
+      "fields": {
+        "case_number": {
+          "gemini": "113/91",
+          "claude": null,
+          "edited": null
+        },
+        "district": {
+          "gemini": "Nqamakwe",
+          "claude": null,
+          "edited": null
+        },
+        "magistrate": {
+          "gemini": "John T. O'Connor",
+          "claude": null,
+          "edited": null
+        },
+        "plaintiff": {
+          "gemini": "Tshaka",
+          "claude": null,
+          "edited": null
+        },
+        "defendant": {
+          "gemini": "Ndabeni",
+          "claude": null,
+          "edited": null
+        },
+        "claim": {
+          "gemini": "£5 for breach of contract",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard": {
+          "gemini": "2nd September 1891",
+          "claude": null,
+          "edited": null
+        },
+        "date_heard_iso": {
+          "gemini": "1891-09-02",
+          "claude": null,
+          "edited": null
+        },
+        "appearance_for_plaintiff": {
+          "gemini": "In person",
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_plaintiff": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "lawyer_or_agent_for_defendant": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "interpreter": {
+          "gemini": null,
+          "claude": null,
+          "edited": null
+        },
+        "plea_verbatim": {
+          "gemini": "Admits liability.",
+          "claude": null,
+          "edited": null
+        },
+        "verdict": {
+          "gemini": "Judgment for plaintiff with costs.",
+          "claude": null,
+          "edited": null
+        },
+        "full_transcript": {
+          "gemini": "Civil Case No 113/91. Tshaka versus Ndabeni. Claim £5 for breach of contract. Judgment for plaintiff.",
+          "claude": null,
+          "edited": null
+        }
+      },
+      "pages": [
+        {
+          "filename": "IMG_6378.jpg",
+          "order": 4,
+          "page_type": "cover_regular",
+          "transcript": {
+            "gemini": "Civil Case No 113/91. Tshaka versus Ndabeni.",
+            "claude": null,
+            "edited": null
+          }
+        }
+      ],
+      "field_confidence": {},
+      "provenance": {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "processed_at": "2026-06-24T17:08:32-04:00"
+      }
+    }
+  ]
+}

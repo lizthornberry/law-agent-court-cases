@@ -13,6 +13,7 @@ Usage (from the directory ABOVE court_pipeline/):
     python -m court_pipeline.run pages       [--box NAME ...] [--limit N] [--new-only] [--batch] [--force]
     python -m court_pipeline.run cases       [--box NAME ...] [--limit N] [--force]
     python -m court_pipeline.run catalog
+    python -m court_pipeline.run relocate-paths
     python -m court_pipeline.run all         [--box NAME ...] [--limit N] [--new-only] [--batch] [--force]
 
 Per-stage batch defaults (config ``stages.<pass>.mode``): transcribe defaults to
@@ -144,6 +145,13 @@ def cmd_catalog(args, cfg):
     _print_json(out)
 
 
+def cmd_relocate_paths(args, cfg):
+    from .relocate_paths import relocate_stored_paths
+
+    print("Relocated stored paths:")
+    _print_json(relocate_stored_paths(cfg))
+
+
 def cmd_all(args, cfg):
     from .classify_transcribe import run_classify, run_transcribe
     from .consolidate import run_consolidate
@@ -234,6 +242,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("catalog", help="build SQLite catalog + index.json + review.csv")
     sp.set_defaults(func=cmd_catalog)
+
+    sp = sub.add_parser(
+        "relocate-paths",
+        help="rewrite cached absolute image paths after moving the project tree",
+    )
+    sp.set_defaults(func=cmd_relocate_paths)
 
     sp = sub.add_parser("all", help="run the full pipeline end to end")
     add_common(sp)

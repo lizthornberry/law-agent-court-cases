@@ -87,6 +87,7 @@ class MockProvider(Provider):
             "date_heard": "1st day of January 1900",
             "date_heard_iso": "1900-01-01",
             "appearance_for_plaintiff": "Mock Agent",
+            "appearance_for_defendant": "Mock Agent Def",
             "interpreter": "Mock Interpreter",
             "plea_verbatim": "Plea: not guilty (mock).",
             "verdict": "Judgment for plaintiff (mock).",
